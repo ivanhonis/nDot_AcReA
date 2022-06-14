@@ -22,10 +22,10 @@ class DataReorganizer:
                    "THETAUSDT", "OMGUSDT"]
 
         self.path_orderbook = "D:/Apa/Coder/Binance_orderbook_history/2_series_2022_5_02/"
-        self.path_orderbook = "C:/coder/"
+        # self.path_orderbook = "C:/coder/"
         self.path_orderbook_reorg = "D:/Apa/Coder/crypto_db_ndot/order_book/"
         self.orderbook_unpacked = self.load_orderbook_unpacked()
-        self.filelist_orderbook = self.get_filelist_orderbook()
+        self.filelist_orderbook = self.get_filelist_orderbook(0, 12) #x hányas alkönyvtártól hányadikig
         self.w_data = self.get_defa_dict("dict")
         self.w_actual_file = self.get_defa_dict("")
         self.r_data = self.get_defa_dict("dict")
@@ -94,9 +94,9 @@ class DataReorganizer:
                 ret_dic[sy] = ""
         return ret_dic
 
-    def get_filelist_orderbook(self):
+    def get_filelist_orderbook(self, ifrom=0, ito=25000):
         files = []
-        for i in range(12):
+        for i in range(ifrom, ito + 1):
             mypath = self.path_orderbook
             mypath += str(i)
             if os.path.exists(mypath):
@@ -186,26 +186,49 @@ class DataReorganizer:
             n_dt = dt_array[i] + datetime.timedelta(seconds=diff_array[i])
             dt_array.append(n_dt)
         return dt_array
-    
-    def get_sec_diff(self, symbol_dict, dty="datetime"):
-        # visszadja az eredeti sec differenciált
-        # visszafelé
-        dkeys = list(symbol_dict.keys())
-        dkeys = dkeys[::-1]
-        # symbol_dict_mod = {}
-        sec_diff_orig = []
-        for kid in range(len(dkeys) - 1):
-            act = symbol_dict[dkeys[kid]]
-            act_dt = dr.cut_msec(act[dty])
-    
-            next = symbol_dict[dkeys[kid + 1]]
-            next_dt = dr.cut_msec(next[dty])
-    
-            dif_dt = act_dt - next_dt
-            dif_df_int = int(str(dif_dt.seconds))
-            sec_diff_orig.append(dif_df_int)
-        sec_diff_orig = sec_diff_orig[::-1]
-        return sec_diff_orig
+
+    def get_sec_diff(self, symbol_dict, diff_date_type="datetime"):
+        i_dkeys = list(symbol_dict.keys())
+        i_sec_diff_result = []
+        for i_kid in range(len(i_dkeys) - 1):
+            i_act = symbol_dict[i_dkeys[i_kid]]  ## alktuális adat
+            i_act_dt = self.cut_msec(i_act[diff_date_type])  ## aktuális dateteime
+
+            i_next = symbol_dict[i_dkeys[i_kid + 1]]  ## következő adat
+            i_next_dt = self.cut_msec(i_next[diff_date_type])  ## következő datetime
+
+            # print(act_dt, next_dt)
+            i_dif_dt = i_next_dt - i_act_dt  ## különbözet időben kifejezve
+            i_dif_df_int = int(str(i_dif_dt.seconds))
+            i_sec_diff_result.append(i_dif_df_int)
+        return i_sec_diff_result
+
+    # def get_sec_diff(self, symbol_dict, dty="datetime"):
+    #     # visszadja az eredeti sec differenciált
+    #     # visszafelé
+    #     dkeys = list(symbol_dict.keys())
+    #     dkeys = dkeys[::-1]
+    #     # symbol_dict_mod = {}
+    #     sec_diff_orig = []
+    #     for kid in range(len(dkeys) - 1):
+    #         act = symbol_dict[dkeys[kid]]
+    #         act_dt = self.cut_msec(act[dty])
+    #
+    #         next = symbol_dict[dkeys[kid + 1]]
+    #         next_dt = self.cut_msec(next[dty])
+    #
+    #         # print(act_dt, next_dt)
+    #         dif_dt = act_dt - next_dt
+    #         dif_df_int = int(str(dif_dt.seconds))
+    #         # if dif_df_int > 5000:
+    #         #     print('segg', dif_df_int, dty)
+    #         #     print("segg dif", act_dt, next_dt,  act_dt - next_dt)
+    #         #     print(act)
+    #         #     print(next)
+    #         #     time.sleep(15)
+    #         sec_diff_orig.append(dif_df_int)
+    #     sec_diff_orig = sec_diff_orig[::-1]
+    #     return sec_diff_orig
     
     def get_symbol_data(self, dict_data, symbol):
         syb = symbol.lower() + "@depth20"
@@ -218,16 +241,39 @@ class DataReorganizer:
         return symbol_dict
     
     def dict_data_refinery(self, dict_data):
+
         new_dict_data = {}
         ndd_id = 0
         for sy in dr.symbols:
+            # 1111111111111111111111111111111111111111
+            # szétszedem symbolokra
+
             symbol_dict = dr.get_symbol_data(dict_data, sy)
+
+            # new_sec_diff_test = dr.get_sec_diff(symbol_dict, "datetime")
+            # print(sy, set(new_sec_diff_test))
+
+            # if sy == "SOLUSDT":
+            #     for xvz, ssy in enumerate(symbol_dict):
+            #         if symbol_dict[ssy]['stream'] == "manausdt@depth20":
+            #             # if new_sec_diff_test[xvz] == 0:
+            #             #     print("-" * 80)
+            #             print(xvz,
+            #                   symbol_dict[ssy]['stream'],
+            #                   symbol_dict[ssy]['datetime'],
+            #                   new_sec_diff_test[xvz]
+            #                   # dict_data[ssy]['mod_datetime'],
+            #                   # dict_data[ssy]['datetime_valid']
+            #                   )
+
+            # 22222222222222222222222222222222222222222222222
+            # az összetprlódást kezelem
+
             sec_diff_orig = dr.get_sec_diff(symbol_dict)
-            
             sec_diff_mod = dr.get_mod_sec(sec_diff_orig.copy())
             start_dt = dr.cut_msec(symbol_dict[0]['datetime'])
             mod_dt = dr.get_mod_datetime(start_dt, sec_diff_mod)
-        
+
             for x, syd in enumerate(symbol_dict):
                 if self.cut_msec(symbol_dict[syd]['datetime']) == mod_dt[x]:
                     symbol_dict[syd]["mod_datetime"] = mod_dt[x]
@@ -236,15 +282,83 @@ class DataReorganizer:
                     symbol_dict[syd]["mod_datetime"] = mod_dt[x]
                     symbol_dict[syd]["datetime_valid"] = "modified - crowded"
 
-            # sec_diff_mod_test = dr.get_sec_diff(symbol_dict, "mod_datetime")
-            # for jx, jd in enumerate(symbol_dict):
-            #     if sec_diff_mod_test[jx] == 0:
-            #         print("-" * 80)
-            #     print(jx, symbol_dict[jd]["mod_datetime"], sec_diff_orig[jx])
+            # 3333333333333333333333333333333333333333333333333333
+            # összetorlódás és csend (GAP) egyben
+            # ebben esetben a szünetben lévő elemeket a szünet elejére sorolom
+
+            new_sec_diff_test = dr.get_sec_diff(symbol_dict, "mod_datetime")
+            new_sec_diff_test.append(-100)
+            if sy == "ATOMUSDT":
+                for xvz, ssy in enumerate(symbol_dict):
+                    if new_sec_diff_test[xvz] != 1:
+                        print("-" * 80)
+                    print(xvz,
+                          symbol_dict[ssy]['stream'],
+                          symbol_dict[ssy]['datetime'],
+                          symbol_dict[ssy]['mod_datetime'],
+                          symbol_dict[ssy]['datetime_valid'],
+                          new_sec_diff_test[xvz]
+                          )
 
 
-            ## innen megcsinálom a gap ek kitöltését az előzővel
             symbol_sec_diff = self.get_sec_diff(symbol_dict, "mod_datetime")
+
+            ikey_sdic = list(symbol_dict.keys())
+            ibs_data = symbol_dict[ikey_sdic[0]].copy()
+            shift_count = 1
+            for ix, i_dat in enumerate(symbol_sec_diff):
+                if i_dat != 0:
+                    ibs_data = symbol_dict[ikey_sdic[ix]].copy()
+                    shift_count = 1
+                else:
+                    symbol_dict[ikey_sdic[ix]]['mod_datetime'] = dr.cut_msec(ibs_data['datetime']) + datetime.timedelta(seconds=shift_count)
+                    symbol_dict[ikey_sdic[ix]]["datetime_valid"] = "modified - crowded, silece refactor"
+                    shift_count += 1
+
+            new_sec_diff_test = dr.get_sec_diff(symbol_dict, "mod_datetime")
+            print(sy, "itt 3", set(new_sec_diff_test))
+
+
+
+            # for xvz, ssy in enumerate(symbol_dict):
+            #     if symbol_dict[ssy]['stream'] == "nmrusdt@depth20":
+            #         if symbol_sec_diff[xvz] == 0:
+            #             print("-" * 80)
+            #         print(xvz,
+            #               symbol_dict[ssy]['stream'],
+            #               symbol_dict[ssy]['datetime'],
+            #               symbol_dict[ssy]['mod_datetime'],
+            #               symbol_dict[ssy]['datetime_valid'],
+            #               symbol_sec_diff[xvz]
+            #               )
+
+            # symbol_sec_diff = self.get_sec_diff(symbol_dict, "mod_datetime")
+            # symbol_sec_diff.append(-10000)
+            # print(sy, "symbol_sec_diff xxxxx", list(set(symbol_sec_diff)))
+
+            # unique_dict = {}
+            # for udie in symbol_sec_diff:
+            #     unique_dict[udie] = 1
+            # print(unique_dict)
+
+            # if sy == "ATOMUSDT":
+            #     print(symbol_sec_diff)
+            #     print(sy, "symbol_sec_diff xxxxx", set(symbol_sec_diff))
+            #     for kx, kg in enumerate(symbol_sec_diff):
+            #         if kg == list(set(symbol_sec_diff))[3]:
+            #             print("ccccc-------", kx)
+            #
+            #
+            #     time.sleep(5)
+            #     for xvz, rtz in enumerate(symbol_dict):
+            #         print(xvz,
+            #               symbol_dict[rtz]['stream'],
+            #               symbol_dict[rtz]['datetime'],
+            #               symbol_dict[rtz]['mod_datetime'],
+            #               symbol_dict[rtz]['datetime_valid'],
+            #               symbol_sec_diff[xvz]
+            #               )
+
             exp_symbol_dict = {}
             esd_no = 0
             for ix, vx in enumerate(symbol_sec_diff):
@@ -252,24 +366,57 @@ class DataReorganizer:
                     exp_symbol_dict[esd_no] = symbol_dict[ix].copy()
                     esd_no += 1
                 else:
+                    # print("VX ----------------- ", vx)
                     exp_symbol_dict[esd_no] = symbol_dict[ix].copy()
-                    exp_symbol_dict[esd_no]["datetime_valid"] = "modified - silent start" + str(vx)
-                    # print("megvolt")
-                    # print(exp_symbol_dict[esd_no]['stream'],
-                    #       exp_symbol_dict[esd_no]['datetime'],
-                    #       exp_symbol_dict[esd_no]['mod_datetime'],
-                    #       exp_symbol_dict[esd_no]['datetime_valid']
-                    #       )
+                    exp_symbol_dict[esd_no]["datetime_valid"] = "modified - silent start: " + str(vx - 1)
                     esd_no += 1
                     ibase_dt = self.cut_msec(symbol_dict[ix]['mod_datetime'])
                     ibase_data = symbol_dict[ix].copy()
                     for exx in range(vx-1):
                         nm_dt = ibase_dt + datetime.timedelta(seconds=exx + 1)
                         ibase_data['mod_datetime'] = nm_dt
-                        ibase_data["datetime_valid"] = "modified - silent " + str(exx) + " - " + str(vx)
+                        ibase_data["datetime_valid"] = "modified - silent "
                         exp_symbol_dict[esd_no] = ibase_data.copy()
                         esd_no += 1
-            
+
+
+
+            # print("modified - silent", sy, len(list(exp_symbol_dict.keys())))
+
+            test_diff = self.get_sec_diff(exp_symbol_dict, "mod_datetime")
+            # test_diff.append(-1000)
+            if 0 in set(test_diff):
+                # print(sy, set(test_diff), len(list(exp_symbol_dict.keys())))
+
+                # kiszed
+                ex_keys = list(exp_symbol_dict.keys())
+                for tx, t_diff in enumerate(test_diff):
+                    if t_diff == 0:
+                        exp_symbol_dict[ex_keys[tx]]["mod_datetime"] = exp_symbol_dict[ex_keys[tx]]["mod_datetime"] - datetime.timedelta(seconds=1)
+                        exp_symbol_dict[ex_keys[tx]]["datetime_valid"] = "modified - back shift"
+                        exp_symbol_dict[ex_keys[tx - 1]]["mod_datetime"] = exp_symbol_dict[ex_keys[tx - 1]]["mod_datetime"] - datetime.timedelta(seconds=1)
+                        exp_symbol_dict[ex_keys[tx]]["datetime_valid"] = "modified - back shift"
+                        exp_symbol_dict[ex_keys[tx - 2]]["mod_datetime"] = exp_symbol_dict[ex_keys[tx - 2]]["mod_datetime"] - datetime.timedelta(seconds=1)
+                        exp_symbol_dict[ex_keys[tx]]["datetime_valid"] = "modified - back shift"
+                        del exp_symbol_dict[ex_keys[tx - 3]]
+
+
+
+                # test_diff = self.get_sec_diff(exp_symbol_dict, "mod_datetime")
+                # print("after backshift: ", sy, set(test_diff), len(list(exp_symbol_dict.keys())))
+
+                # for xvz, ssy in enumerate(exp_symbol_dict):
+                #     if test_diff[xvz] == 0:
+                #         print("-" * 80)
+                #     print(xvz,
+                #       exp_symbol_dict[ssy]['stream'],
+                #       exp_symbol_dict[ssy]['datetime'],
+                #       exp_symbol_dict[ssy]['mod_datetime'],
+                #       test_diff[xvz])
+                # time.sleep(2)
+
+            # print("dict len: ", sy, len(list(exp_symbol_dict.keys())))
+
             for isyd in exp_symbol_dict:
                 new_dict_data[ndd_id] = exp_symbol_dict[isyd]
                 ndd_id += 1
@@ -285,7 +432,7 @@ if __name__ == '__main__':
     filelist_ob = dr.filelist_orderbook
     # print(filelist_ob)
     filelist_ob.sort(key=lambda x: int(''.join(filter(str.isdigit, x))))
-    # print(filelist_ob)
+    print(filelist_ob)
     # data = [1, 2, 3]
     # dr.add_data("BTCUSDT", "2022_01_01", 2, data)
     # data = [3, 2, 1]
@@ -305,18 +452,41 @@ if __name__ == '__main__':
     # print(dr.get_data("BTCUSDT", "2022_01_02", 3))
     # print(dr.get_data("BTCUSDTc", "2022_01_02", 6))
 
+    dict_data = dr.get_dict_by_filename("1/nDotBNC_A_8.pickle")
+    # for xvz, ssy in enumerate(dict_data):
+    #     if dict_data[ssy]['stream'] == "btcusdt@depth20":
+    #         print(xvz,
+    #               dict_data[ssy]['stream'],
+    #               dict_data[ssy]['datetime'],
+    #               )
+    # #
 
-    dict_data = dr.get_dict_by_filename("1/nDotBNC_A_2.pickle")
+
+
     new_dict_data = dr.dict_data_refinery(dict_data)
-    
-    for xvz, ssy in enumerate(new_dict_data):
-        print(xvz,
-              new_dict_data[ssy]['stream'],
-              new_dict_data[ssy]['datetime'],
-              new_dict_data[ssy]['mod_datetime'],
-              new_dict_data[ssy]['datetime_valid']
-              )
-        
+
+    # for i_file_names in filelist_ob:
+    #     print(i_file_names)
+    #     dict_data = dr.get_dict_by_filename(i_file_names)
+    #     new_dict_data = dr.dict_data_refinery(dict_data)
+
+    # new_sec_diff_test = dr.get_sec_diff(new_dict_data, "mod_datetime")
+    # new_sec_diff_test.append(-1000)
+    # print(set(new_sec_diff_test))
+
+    #
+    # for xvz, ssy in enumerate(new_dict_data):
+    #     if new_dict_data[ssy]['stream'] == "btcusdt@depth20":
+    #         if new_sec_diff_test[xvz] == 0:
+    #             print("-" * 80)
+    #         print(xvz,
+    #               new_dict_data[ssy]['stream'],
+    #               new_dict_data[ssy]['datetime'],
+    #               new_dict_data[ssy]['mod_datetime'],
+    #               new_dict_data[ssy]['datetime_valid'],
+    #               new_sec_diff_test[xvz]
+    #               )
+    # #
     
     # s_keys = list(new_dict_data.keys())
     #
@@ -344,38 +514,38 @@ if __name__ == '__main__':
         
     sys.exit(0)
 
-    base_dt = symbol_dict[0]['datetime']
-    print(base_dt)
-
-    base_dt = datetime.datetime(base_dt.year, base_dt.month, base_dt.day, base_dt.hour,
-                                base_dt.minute, base_dt.second)
-
-    print(base_dt)
-
-    for nd in symbol_dict:
-        mod_dt = base_dt + datetime.timedelta(seconds=nd)
-        print(nd, symbol_dict[nd]['stream'], symbol_dict[nd]['datetime'], mod_dt)
-
-
-
-
-    l_sec_no = 0
-    for fo in filelist_ob[0:200]:
-        data_dict = dr.get_dict_by_filename(fo)
-        # print(data_dict[0])
-        for dd in data_dict:
-            # print(data_dict[dd])
-            symbol, day_str, rtime, sec_no = dr.get_dt_symbol(data_dict[dd])
-            if symbol == 'BTCUSDT':
-                if sec_no - 1 != l_sec_no:
-                    print(symbol, day_str, rtime, sec_no, fo)
-                l_sec_no = sec_no
-                    # dr.add_data(symbol, day_str, sec_no, data_dict[dd])
-                # print(len(str(data_dict[dd])))
-        print("-" * 80)
-    # dr.w_close_db()
-
-    # for i in range(90000):
-    #     d = dr.get_data("BTCUSDT", "2022_05_02", i)
-    #     if not d:
-    #         print(i)
+            # base_dt = symbol_dict[0]['datetime']
+            # print(base_dt)
+            #
+            # base_dt = datetime.datetime(base_dt.year, base_dt.month, base_dt.day, base_dt.hour,
+            #                             base_dt.minute, base_dt.second)
+            #
+            # print(base_dt)
+            #
+            # for nd in symbol_dict:
+            #     mod_dt = base_dt + datetime.timedelta(seconds=nd)
+            #     print(nd, symbol_dict[nd]['stream'], symbol_dict[nd]['datetime'], mod_dt)
+            #
+            #
+            #
+            #
+            # l_sec_no = 0
+            # for fo in filelist_ob[0:200]:
+            #     data_dict = dr.get_dict_by_filename(fo)
+            #     # print(data_dict[0])
+            #     for dd in data_dict:
+            #         # print(data_dict[dd])
+            #         symbol, day_str, rtime, sec_no = dr.get_dt_symbol(data_dict[dd])
+            #         if symbol == 'BTCUSDT':
+            #             if sec_no - 1 != l_sec_no:
+            #                 print(symbol, day_str, rtime, sec_no, fo)
+            #             l_sec_no = sec_no
+            #                 # dr.add_data(symbol, day_str, sec_no, data_dict[dd])
+            #             # print(len(str(data_dict[dd])))
+            #     print("-" * 80)
+            # # dr.w_close_db()
+            #
+            # # for i in range(90000):
+            # #     d = dr.get_data("BTCUSDT", "2022_05_02", i)
+            # #     if not d:
+            # #         print(i)
