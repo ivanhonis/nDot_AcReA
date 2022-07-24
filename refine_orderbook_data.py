@@ -8,8 +8,6 @@ import datetime
 import psutil
 import gc
 
-
-
 class Refine_Orderbook:
     orderbook_unpacked = []
     filelist_orderbook = []
@@ -24,16 +22,14 @@ class Refine_Orderbook:
                    "DOTUSDT", "VETUSDT", "LRCUSDT", "ETCUSDT", "LINKUSDT", "SHIBUSDT", "BCHUSDT",
                    "THETAUSDT", "OMGUSDT"]
 
-        # ATOMUSDT kétszer volt, LUNAUSDT kiettem mert csak a baj van vele
+        # ATOMUSDT kétszer volt, LUNAUSDT kivettem mert csak a baj van vele
         self.symbols = ["ATOMUSDT", "BTCUSDT", "ETHUSDT", "NMRUSDT", "SANDUSDT", "SOLUSDT", "FTMUSDT", "XRPUSDT",
                    "MANAUSDT", "NEARUSDT", "AVAXUSDT", "TRXUSDT", "ROSEUSDT", "ONEUSDT", "ALGOUSDT",
                    "DOTUSDT", "VETUSDT", "LRCUSDT", "ETCUSDT", "LINKUSDT", "SHIBUSDT", "BCHUSDT",
                    "THETAUSDT", "OMGUSDT"]
 
         # nincs elég memória csak a felét dolgozom fel
-        self.symbols = ["ATOMUSDT", "BTCUSDT", "ETHUSDT", "NMRUSDT", "SANDUSDT", "SOLUSDT", "FTMUSDT", "XRPUSDT",
-                   "MANAUSDT", "NEARUSDT"]
-
+        self.symbols = ["TRXUSDT"]
 
         self.path_orderbook = "D:/Apa/Coder/Binance_orderbook_history/2_series_2022_5_02/"
         # self.path_orderbook = "C:/coder/"
@@ -48,6 +44,23 @@ class Refine_Orderbook:
         print(self.w_data, self.w_actual_file)
         self.max_smoot_length = 0
         self.chk_error = 0
+        self.orderbook_data_done_files = []
+        self.load_done_files()
+
+    def load_done_files(self):
+        try:
+            objectrep = open("orderbook_data_done_files.pickle", "rb")
+            self.orderbook_data_done_files = pickle.load(objectrep)
+        except:
+            self.orderbook_data_done_files = []
+
+    def save_done_files(self):
+        pickle.dump(self.orderbook_data_done_files, open("orderbook_data_done_files.pickle", "wb"))
+
+    def add_done_files(self, fn):
+        if fn not in self.orderbook_data_done_files:
+            self.orderbook_data_done_files.append(fn)
+            self.save_done_files()
 
     def print_free_mem(self):
         print(round(psutil.virtual_memory().free / 1024 / 1024 / 1027, 2), "GB")
@@ -81,9 +94,7 @@ class Refine_Orderbook:
     def w_save_db(self, symbol):
         if self.w_actual_file[symbol] != "":
             print("-" * 80)
-            print("-" * 80)
             print("save data", self.w_actual_file[symbol])
-            print("-" * 80)
             print("-" * 80)
             pickle.dump(self.w_data[symbol], open(self.w_actual_file[symbol], "wb"))
 
@@ -387,34 +398,38 @@ if __name__ == '__main__':
     # new_dict_data = dr.dict_data_refinery(dict_data)
     # dr.chk_data(new_dict_data)
 
-    ro.filelist_orderbook = ro.get_filelist_orderbook(28, 28)  # x hányas alkönyvtártól hányadikig
-    # 1-12 ig volt egy adatgyűjtés és 13-... újra kezdtem
-    # ezért célszerű két menetben feldolgozni 1-12 és 13-..... hogy a szekvenciális feldolgozás gyorsabb legyen
+    ro.filelist_orderbook = ro.get_filelist_orderbook(1, 12)  # x hányas alkönyvtártól hányadikig
+    # 1-12 ig volt egy adatgyűjtés és 13-35 újra kezdtem
+    # ezért célszerű két menetben feldolgozni 1-12 és 13-35 hogy a szekvenciális feldolgozás gyorsabb legyen
+    # 36- tól szintén
 
+    all_files = True
     for i_file_name in ro.filelist_orderbook:
-        time_stamp_0 = datetime.datetime.now()
-        print(i_file_name, "max smoot length", ro.max_smoot_length, "chk error", ro.chk_error)
-        print(datetime.datetime.now(), "read file")
-        gc.collect()
-        ro.print_free_mem()
-        dict_data = ro.get_dict_by_filename(i_file_name)
-        print(datetime.datetime.now(), "refine")
-        ro.print_free_mem()
-        dict_data = ro.dict_data_refinery(dict_data)
-        print(datetime.datetime.now(), "chk data")
-        ro.print_free_mem()
-        ro.chk_data(dict_data)
-        print(datetime.datetime.now(), "start writeing")
-        ro.print_free_mem()
-        if ro.chk_error == 0:
-            for dd in dict_data:
-                symbol, day_str, rtime, sec_no = ro.get_dt_symbol(dict_data[dd])
-                # if symbol == 'BTCUSDT':
-                #     # print(symbol, day_str, rtime, sec_no)
-                # print("add data", symbol, day_str, sec_no)
-                ro.add_data(symbol, day_str, sec_no, dict_data[dd])
-        print("run time: ", i_file_name,  datetime.datetime.now() - time_stamp_0)
-        ro.print_free_mem()
+        if i_file_name not in ro.orderbook_data_done_files or all_files:
+            time_stamp_0 = datetime.datetime.now()
+            # print(i_file_name, "max smoot length", ro.max_smoot_length, "chk error", ro.chk_error)
+            print(datetime.datetime.now(), "read file")
+            # gc.collect()
+            # ro.print_free_mem()
+            dict_data = ro.get_dict_by_filename(i_file_name)
+            # print(datetime.datetime.now(), "refine")
+            # ro.print_free_mem()
+            dict_data = ro.dict_data_refinery(dict_data)
+            # print(datetime.datetime.now(), "chk data")
+            # ro.print_free_mem()
+            ro.chk_data(dict_data)
+            # print(datetime.datetime.now(), "start writeing")
+            # ro.print_free_mem()
+            if ro.chk_error == 0:
+                for dd in dict_data:
+                    symbol, day_str, rtime, sec_no = ro.get_dt_symbol(dict_data[dd])
+                    # if symbol == 'BTCUSDT':
+                    #     # print(symbol, day_str, rtime, sec_no)
+                    # print("add data", symbol, day_str, sec_no)
+                    ro.add_data(symbol, day_str, sec_no, dict_data[dd])
+            # print("run time: ", i_file_name,  datetime.datetime.now() - time_stamp_0)
+            ro.add_done_files(i_file_name)
+            ro.print_free_mem()
 
     ro.w_close_db()
     # for i in range(90000):
