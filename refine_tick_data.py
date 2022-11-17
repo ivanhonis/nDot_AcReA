@@ -9,7 +9,7 @@ import psutil
 import gc
 
 
-class Refine_pickdata:
+class Refine_tickdata:
 
     def __init__(self):
         self.symbols = ["ATOMUSDT", "BTCUSDT", "ETHUSDT", "NMRUSDT", "SANDUSDT", "SOLUSDT", "FTMUSDT", "XRPUSDT",
@@ -27,8 +27,8 @@ class Refine_pickdata:
 
         # self.defa_sec_dict = self.defa_sec_dict_load()
 
-        self.path_pickdata = "D:/Apa/Coder/Binance_tick_data/"
-        self.path_pickdata_refined = "D:/Apa/Coder/crypto_db_ndot/tick_data/"
+        self.path_pickdata = "X:/Apa/coder/Binance_tick_data/"
+        self.path_pickdata_refined = "X:/Apa/coder/crypto_db_ndot/tick_data/"
         self.filelist_orderbook = self.get_filelist_pickdata()  # x hányas alkönyvtártól hányadikig
         self.w_data = self.get_defa_dict("dict").copy()
         # print(self.w_data.keys())
@@ -145,11 +145,11 @@ class Refine_pickdata:
                 objectrep = open(work_file, "rb")
                 self.w_data[symbol] = pickle.load(objectrep)
                 self.w_actual_file[symbol] = work_file
-                print("work file: ", symbol, self.w_actual_file[symbol] )
+                # print("work file: ", symbol, self.w_actual_file[symbol] )
             except:
                 self.w_data[symbol] = self.defa_sec_dict_load()
                 self.w_actual_file[symbol] = work_file
-                print("work file: ", symbol, self.w_actual_file[symbol])
+                # print("work file: ", symbol, self.w_actual_file[symbol])
 
     def w_save_db(self, symbol):
 
@@ -199,8 +199,8 @@ class Refine_pickdata:
                         total_qty += float(i_data['qty'])
                         trades_count += 1
 
-                    first_id = smallest_id_data['id']
-                    last_id = largest_id_data['id']
+                    # first_id = smallest_id_data['id']
+                    # last_id = largest_id_data['id']
                     avg_price = round(turnover / total_qty, 8)
                     avg_qty = round(total_qty / trades_count, 8)
                     total_qty = round(total_qty, 8)
@@ -218,6 +218,7 @@ class Refine_pickdata:
                     self.w_data[symbol][str(i_sec)]['trades_count'] = trades_count
                     self.w_data[symbol][str(i_sec)]['turnover'] = turnover
 
+            print(f"Save file: {self.w_actual_file[symbol]}")
             pickle.dump(self.w_data[symbol], open(self.w_actual_file[symbol], "wb"))
 
     def w_close_db(self):
@@ -242,13 +243,15 @@ class Refine_pickdata:
 
 
 if __name__ == '__main__':
-    rp = Refine_pickdata()
+    rp = Refine_tickdata()
     file_list = rp.get_filelist_pickdata()
     all_files = False
-    for fl in file_list:
+    selected_symbol = "ALL"
+    for fx, fl in enumerate(file_list):
+        print("\r" + f"job ready: {round(fx / len(file_list), 2)}% ", end="")
         if fl not in rp.tick_data_done_files or all_files:
             symbol = rp.get_symbol(fl)
-            if symbol == "TRXUSDT":
+            if symbol == selected_symbol or selected_symbol == "ALL":
                 dict_data = rp.get_dict_by_filename(fl)
                 # print(dict_data)
                 # sys.exit(0)
