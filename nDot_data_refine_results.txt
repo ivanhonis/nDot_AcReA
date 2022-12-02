@@ -1,0 +1,105 @@
+2022-10-31 12:40:00.669051,
+             orig_orig, 196,
+             orig_smoot, 15,
+             smoot_orig, 59,
+             nallowed, 0,
+             all_datapoints, 31495672
+             
+2022-11-01 13:28:48.086832,
+             orig_orig, 855,
+             orig_smoot, 107,
+             smoot_orig, 150,
+             nallowed, 1,
+             all_datapoints, 76432271
+             
+2022-11-08 10:12:58.269596,
+             orig_orig, 1190,
+             orig_smoot, 223,
+             smoot_orig, 316,
+             nallowed, 8,
+             all_datapoints, 107617361
+             
+2022-11-08 22:45:00.899582,
+             orig_orig, 608,
+             orig_smoot, 78,
+             smoot_orig, 237,
+             nallowed, 9,
+             all_datapoints, 49773077
+             
+2022-11-09 05:53:08.178713,
+             orig_orig, 0,
+             orig_smoot, 0,
+             smoot_orig, 0,
+             nallowed, 0,
+             all_datapoints, 0
+             
+2022-11-09 08:46:31.556837,
+             orig_orig, 426,
+             orig_smoot, 240,
+             smoot_orig, 205,
+             nallowed, 0,
+             all_datapoints, 52788380
+             
+2022-11-10 13:59:33.384511,
+             orig_orig, 0,
+             orig_smoot, 0,
+             smoot_orig, 0,
+             nallowed, 0,
+             all_datapoints, 0
+             
+2022-11-10 15:53:34.623451,
+             orig_orig, 541,
+             orig_smoot, 217,
+             smoot_orig, 312,
+             nallowed, 0,
+             all_datapoints, 61373434
+             
+2022-11-10 19:51:41.432168,
+             orig_orig, 29,
+             orig_smoot, 9,
+             smoot_orig, 13,
+             nallowed, 0,
+             all_datapoints, 8280471
+             
+2022-11-13 08:37:10.331815,
+             orig_orig, 28,
+             orig_smoot, 10,
+             smoot_orig, 20,
+             nallowed, 0,
+             all_datapoints, 5311131
+             
+2022-11-23 06:31:57.590918,
+             orig_orig, 0,
+             orig_smoot, 0,
+             smoot_orig, 0,
+             nallowed, 0,
+             all_datapoints, 0
+             
+2022-11-23 06:54:00.420196,
+             orig_orig, 109,
+             orig_smoot, 86,
+             smoot_orig, 40,
+             nallowed, 0,
+             all_datapoints, 10221568
+             
+2022-11-25 18:22:53.533258,
+             orig_orig, 35,
+             orig_smoot, 78,
+             smoot_orig, 36,
+             nallowed, 0,
+             all_datapoints, 12712191
+             
+2022-11-25 21:11:56.012500,
+             orig_orig, 10,
+             orig_smoot, 2,
+             smoot_orig, 1,
+             nallowed, 0,
+             all_datapoints, 2445402
+             
+2022-11-27 22:46:08.796275,
+             orig_orig, 13,
+             orig_smoot, 9,
+             smoot_orig, 3,
+             nallowed, 1,
+             all_datapoints, 4020214
+             

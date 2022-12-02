@@ -337,12 +337,16 @@ class RefineOrderbook:
 if __name__ == '__main__':
     ro = RefineOrderbook()
 
-    ro.filelist_orderbook = ro.get_filelist_orderbook(61, 61)  # x hányas alkönyvtártól hányadikig
+    ro.filelist_orderbook = ro.get_filelist_orderbook(65, 65)  # x hányas alkönyvtártól hányadikig
 
     # 36- 45 ok
     # 46 - 50 ok
     # 51 - 55 ok
     # 56 - 60 ok
+    # 61 - 61 ok
+    # 62 - 62 ok
+    # 63 - 63 ok
+    # 64 - 64 ok
 
     # 1-12 ig volt egy adatgyűjtés és 13-35 újra kezdtem
     # ezért célszerű két menetben feldolgozni 1-12 és 13-35 hogy a szekvenciális feldolgozás gyorsabb legyen
