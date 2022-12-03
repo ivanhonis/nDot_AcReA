@@ -4,36 +4,41 @@ import time
 
 import numpy as np
 from datetime import datetime, timedelta
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import asyncio
 
 from binance import AsyncClient, BinanceSocketManager, Client
 from binance.exceptions import BinanceAPIException
 from binance.enums import *
 
-from nDot_crypto_db_connector import nDot_db_connector
+# from nDot_crypto_db_connector import nDot_db_connector
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from tensorflow.keras.models import load_model
 
 np.set_printoptions(threshold=5000)
 
+
 class TradeOrderBook:
 
     def __init__(self):
-        # self.traded_symbols = ['ETHUSDT', 'BTCUSDT', 'SOLUSDT']
+        # binance
+        self.async_client = None
+        self.bm = None
+        self.ts = None
 
         self.slot = {'BTCUSDT_S1': {'trade_symbol': 'BTCUSDT',
-                                    'y_filter': .70,
+                                    'y_filter': .75,
                                     'x_type': 4,
                                     'depth': 4,
                                     'qmin': -50,
                                     'qmax': 50,
                                     'qstep': .5,
-                                    'stop_delta': .01,  # %
-                                    'trailer_delta': .01,  # %
-                                    'tf_model': 'xxxx',
-                                    'max_time_sec': 5
+                                    'stop_delta': .01 / 100,
+                                    'trailer_delta': .01 / 100,
+                                    'take_delta': .3 / 100,
+                                    'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
+                                    'max_time_sec': 120
                                     }
                      }
 
@@ -45,65 +50,86 @@ class TradeOrderBook:
                        'BTCUSDT': 4,
                        'SOLUSDT': 3}
 
-        self.position = {'BTCUSDT_S1': {'symbol': 'BTCUSDT',
-                                        'qty': 1,
-                                        'income_price': 160000,
-                                        'stop_price': 15250,
-                                        'trailer_stop_price': 17000,
-                                        'enter_dt': datetime.now()}
-                         }
+        self.slot_position = {'BTCUSDT_S1': {'symbol': '',
+                                             'qty': 0,
+                                             'income_price': 0,
+                                             'stop_price': 0,
+                                             'trailer_stop_price': 0,
+                                             'take_price': 0,
+                                             'enter_dt': None}
+                              }
 
+        # egy adott symbolbol mennyi van
+        # csak akkor követia stoplost ésatrailert ha van belőle
+        self.symbol_position = self.defa_symbol_zero()
+
+        # utolsó piaci kötésvan benne
+        # ez kell az get_x_3d normálásához
         self.actual_traded_price = self.defa_symbol_array()
 
+        # utolsó simert orderbook legjob datai
+        # ez kell a buy és a stop hoz
         self.actual_bid_price = self.defa_symbol_zero()
         self.actual_ask_price = self.defa_symbol_zero()
         self.actual_bid_qty = self.defa_symbol_zero()
         self.actual_ask_qty = self.defa_symbol_zero()
 
-        self.depth = 3
         self.project_name = 'LOB'
         self.models = {}
         self.build_ai()
         self.orderbooks = self.defa_symbol_array()
         self.base_prices = self.defa_symbol_array()
-        self.prices_future = self.defa_symbol_array()
-
-        #  trading
-        self.trade_flag = False
-        self.trade_symbol = ""
-        self.trade_start_dt = datetime.now()
-        self.title = ""
 
         # trade monitoring
         self.monitor_stop = self.defa_slot_zero()
+        self.monitor_trailer = self.defa_slot_zero()
         self.monitor_take = self.defa_slot_zero()
         self.monitor_time = self.defa_slot_zero()
         self.monitor_profit = self.defa_slot_zero()
+        self.monitor_fee = 0
 
+        # status line
         self.status_counter = 0
 
     def buy(self, symbol, slot, qty):
-
-        self.position[slot]['qty'] = qty
-        self.position[slot]['income_price'] = self.actual_ask_price[symbol]
-        self.position[slot]['stop_price'] = self.position[slot]['income_price'] * (1 - self.slot[slot]['stop_delta'])
-        self.position[slot]['trailer_stop_price'] = self.position[slot]['income_price'] * (1 - self.slot[slot]['trailer_delta'])
-        self.position[slot]['enter_dt'] = datetime.now()
+        self.slot_position[slot]['symbol'] = symbol
+        self.slot_position[slot]['qty'] = qty
+        self.slot_position[slot]['income_price'] = self.actual_ask_price[symbol]
+        self.slot_position[slot]['stop_price'] = self.slot_position[slot]['income_price'] * (1 - self.slot[slot]['stop_delta'])
+        self.slot_position[slot]['trailer_stop_price'] = self.slot_position[slot]['income_price'] * (1 - self.slot[slot]['trailer_delta'])
+        self.slot_position[slot]['take_price'] = self.slot_position[slot]['income_price'] * (1 + self.slot[slot]['take_delta'])
+        self.slot_position[slot]['enter_dt'] = datetime.now()
+        self.symbol_position[symbol] += qty
+        # print("")
+        # print("Buy", symbol, slot, qty, self.slot_position[slot]['income_price'], self.actual_ask_qty[symbol])
 
     def stop(self, symbol, slot):
-        income_value = self.position[slot]['qty'] * self.position[slot]['income_price']
-        exit_value = self.position[slot]['qty'] * self.actual_traded_price[symbol]
+        income_value = self.slot_position[slot]['qty'] * self.slot_position[slot]['income_price']
+        exit_value = self.slot_position[slot]['qty'] * self.actual_bid_price[symbol]
         self.monitor_profit[slot] += (income_value - exit_value)
-        self.position[slot]['qty'] = 0
-        self.position[slot]['income_price'] = 0
-        self.position[slot]['stop_price'] = 0
-        self.position[slot]['trailer_stop_price'] = 0
-        self.position[slot]['enter_dt'] = None
+        self.symbol_position[symbol] -= self.slot_position[slot]['qty']
+        self.slot_position[slot]['symbol'] = ''
+        self.slot_position[slot]['qty'] = 0
+        self.slot_position[slot]['income_price'] = 0
+        self.slot_position[slot]['stop_price'] = 0
+        self.slot_position[slot]['trailer_stop_price'] = 0
+        self.slot_position[slot]['take_price'] = 0
+        self.slot_position[slot]['enter_dt'] = None
+        self.monitor_fee += round((income_value * 0.025 / 100) + (exit_value * 0.025 / 100), 2)
 
+    def open_pnl(self):
+        pnl = 0
+        for slot in self.slot_position:
+            if self.slot_position[slot]['qty'] > 0:
+                income_value = self.slot_position[slot]['qty'] * self.slot_position[slot]['income_price']
+                exit_value = self.slot_position[slot]['qty'] * self.actual_bid_price[self.slot_position[slot]['symbol']]
+                pnl += round(income_value - exit_value, 2)
+        return pnl
+    
     def slot_in_position(self, slot):
-        if self.position[slot]['qty'] > 0:
+        if self.slot_position[slot]['qty'] > 0:
             return True
-        elif self.position[slot]['qty'] == 0:
+        elif self.slot_position[slot]['qty'] == 0:
             return False
         else:
             print("Minusz pozíció!!!!!")
@@ -129,10 +155,9 @@ class TradeOrderBook:
         return ret
 
     def build_ai(self):
-        for sy in self._traded_symbols:
-            tf_model_name = f"projects/LOB/{sy}/nDot_TF_MODEL_{self.project_name}_{sy}.h5"
-            # print(tf_model_name)
-            self.models[sy] = load_model(tf_model_name)
+        for sl in self.slot:
+            tf_model_name = self.slot[sl]['tf_model_file']
+            self.models[sl] = load_model(tf_model_name)
 
     @staticmethod
     def get_socket_name(symbol, i_type):
@@ -150,16 +175,13 @@ class TradeOrderBook:
     async def asyc_websocket(self):
         i_socket_list = []
         for symbol in self._traded_symbols:
-            # i_socket_list.append(self.get_socket_name(symbol, "trade"))
+            i_socket_list.append(self.get_socket_name(symbol, "trade"))
             i_socket_list.append(self.get_socket_name(symbol, "depth20"))
             i_socket_list.append(self.get_socket_name(symbol, "bookticker"))
 
         self.async_client = await AsyncClient.create()
         self.bm = BinanceSocketManager(self.async_client)
         self.ts = self.bm.multiplex_socket(i_socket_list)
-
-        orderbooks = []
-        base_prices = []
 
         async with self.ts as tscm:
             # dot = '.'
@@ -169,8 +191,11 @@ class TradeOrderBook:
                     self.status_counter = 0
                     profit_rounded = {key: round(self.monitor_profit[key], 2) for key in self.monitor_profit}
                     pl = f"Stop: {self.monitor_stop}"\
-                         f" take: {self.monitor_take} last: {self.monitor_time}"\
-                         f" total profit: {profit_rounded}"
+                         f" take: {self.monitor_take} " \
+                         f" trailer: {self.monitor_trailer}" \
+                         f" last: {self.monitor_time}" \
+                         f" total profit: {profit_rounded} / {self.monitor_fee} " \
+                         f"open_pnl: {self.open_pnl()}"
                     pl = pl.replace('{', '').replace('}', '').replace("'", '')
                     print("\r" + pl, end="")
 
@@ -205,11 +230,10 @@ class TradeOrderBook:
                     self.orderbooks[symbol].append(res['data'])
                     if len(self.orderbooks[symbol]) > self.max_depths[symbol]:
                         self.orderbooks[symbol] = self.orderbooks[symbol][1:]
-                        if not self.trade_flag:
-                            for slot in self._symbol_slot[symbol]:
-                                await self.trader(symbol, slot, self.orderbooks[symbol], self.base_prices[symbol])
+                        for slot in self._symbol_slot[symbol]:
+                            await self.trader(symbol, slot, self.orderbooks[symbol], self.base_prices[symbol])
 
-                # elif stype == "trade":
+                elif stype == "trade":
 
                     # {
                     #   "e": "trade",     // Event type
@@ -225,35 +249,9 @@ class TradeOrderBook:
                     #   "M": true         // Ignore
                     # }
 
-                    # self.actual_traded_price[symbol].append(float(res['data']['p']))
-                    # if len(self.actual_traded_price) > 3:
-                    #     self.actual_traded_price = self.actual_traded_price[1:]
-                    # if self.trade_flag:
-                    #     self.prices_future[symbol].append(self.actual_traded_price[symbol][-1])
-                    #     if self.trade_start_dt + timedelta(seconds=5) < datetime.now():
-                    #         act_profit = 0
-                    #         for pf in self.prices_future[self.trade_symbol][5:-1]:
-                    #             if ((pf / self.prices_future[self.trade_symbol][0]) - 1) < -0.065 / 100:
-                    #                 act_profit = pf - self.prices_future[self.trade_symbol][0]
-                    #                 self.monitor_stop[symbol] += 1
-                    #                 # print("stop:", pf, self.prices_future[self.trade_symbol][0])
-                    #                 break
-                    #             elif ((pf / self.prices_future[self.trade_symbol][0]) - 1) >= 0.02 / 100:
-                    #                 act_profit = pf - self.prices_future[self.trade_symbol][0]
-                    #                 self.monitor_take[symbol] += 1
-                    #                 # print("take:", pf, self.prices_future[self.trade_symbol][0])
-                    #                 break
-                    #         if act_profit == 0:
-                    #             act_profit = self.prices_future[self.trade_symbol][-1] - self.prices_future[self.trade_symbol][0]
-                    #             self.monitor_time[symbol] += 1
-                    #             # print("last:", self.prices_future[self.trade_symbol][-1], self.prices_future[self.trade_symbol][0])
-                    #
-                    #         # p0 = self.prices_future[self.trade_symbol][0]
-                    #         # pmax = max(self.prices_future[self.trade_symbol])
-                    #         self.monitor_profit[symbol] += act_profit
-                    #         # print(symbol, p0, pmax, self.monitor_profit)
-                    #         # await self.show_prices()
-                    #         self.trade_flag = False
+                    self.actual_traded_price[symbol].append(float(res['data']['p']))
+                    if len(self.actual_traded_price) > 3:
+                        self.actual_traded_price = self.actual_traded_price[1:]
 
                 elif stype == "bookTicker":
 
@@ -271,42 +269,41 @@ class TradeOrderBook:
 
                     self.actual_ask_price[symbol] = float(res['data']['a'])
                     self.actual_ask_qty[symbol] = float(res['data']['A'])
+                    
+                    if self.symbol_position[symbol] > 0:
+                        for slot in self._symbol_slot[symbol]:
+                            act_traile_price = self.actual_bid_price[symbol] * (1 - self.slot[slot]['trailer_delta'])
+                            self.slot_position[slot]['trailer_stop_price'] = max(self.slot_position[slot]['trailer_stop_price'], act_traile_price)
+                            # print(self.slot_position)
+                            if self.actual_bid_price[symbol] >= self.slot_position[slot]['take_price']:
+                                self.stop(symbol, slot)
+                                self.monitor_take[slot] += 1
+                            elif self.slot_position[slot]['enter_dt'] + timedelta(seconds=self.slot[slot]['max_time_sec']) < datetime.now():
+                                self.stop(symbol, slot)
+                                self.monitor_time[slot] += 1
+                            elif self.actual_bid_price[symbol] < self.slot_position[slot]['stop_price']:
+                                self.stop(symbol, slot)
+                                self.monitor_stop[slot] += 1
+                            elif self.actual_bid_price[symbol] < self.slot_position[slot]['trailer_stop_price']:
+                                self.stop(symbol, slot)
+                                self.monitor_trailer[slot] += 1
 
-                    self.position = {'BTCUSDT_S1': {'symbol': 'BTCUSDT',
-                                                    'qty': 1,
-                                                    'income_price': 160000,
-                                                    'stop_price': 15250,
-                                                    'trailer_stop_price': 17000}}
+    # async def show_prices(self):
+    #
+    #     future_prices = np.array(self.prices_future)
+    #     fp = future_prices[0]
+    #     future_prices = np.divide(future_prices, fp)
+    #
+    #     fig, ax = plt.subplots()
+    #     fig.set_size_inches(14, 6)
+    #     ax.plot(future_prices)
+    #
+    #     ax.set(xlabel='time (s)', ylabel='price', title=self.title)
+    #     ax.grid()
+    #     plt.tight_layout()
+    #     plt.show()
 
-                    for slot in self._symbol_slot[symbol]:
-                        act_traile_price = self.actual_bid_price[symbol] * (1 - self.slot[slot]['trailer_stop_price'])
-                        self.position[slot]['trailer_stop_price'] = max(self.position[slot]['trailer_stop_price'], act_traile_price)
-                        if self.position[slot]['enter_dt'] + timedelta(seconds=self.slot[slot]['max_time_sec']) < datetime.now():
-                            self.stop(symbol, slot)
-                            self.monitor_time[slot] += 1
-                        elif self.actual_bid_price[symbol] < self.position[slot]['stop_price']:
-                            self.stop(symbol, slot)
-                            self.monitor_stop[slot] += 1
-                        elif self.actual_bid_price[symbol] < self.position[slot]['trailer_stop_price']:
-                            self.stop(symbol, slot)
-                            self.monitor_take[slot] += 1
-
-    async def show_prices(self):
-
-        future_prices = np.array(self.prices_future)
-        fp = future_prices[0]
-        future_prices = np.divide(future_prices, fp)
-
-        fig, ax = plt.subplots()
-        fig.set_size_inches(14, 6)
-        ax.plot(future_prices)
-
-        ax.set(xlabel='time (s)', ylabel='price', title=self.title)
-        ax.grid()
-        plt.tight_layout()
-        plt.show()
-
-    async def trader(self, symbol, slot,orderbooks, base_prices):
+    async def trader(self, symbol, slot, orderbooks, base_prices):
         x_type = self.slot[slot]['x_type']
         qmin = self.slot[slot]['qmin']
         qmax = self.slot[slot]['qmax']
@@ -321,11 +318,11 @@ class TradeOrderBook:
             x = np.zeros((1, px.shape[0], px.shape[1], px.shape[2]), dtype=np.float32)
             x[0] = px
 
-            y_result = self.models[symbol].predict(x, verbose=0, batch_size=1)
+            y_result = self.models[slot].predict(x, verbose=0, batch_size=1)
             y_predict = np.argmax(y_result, axis=1)
-
-
+            
             y_filter = self.slot[slot]['y_filter']
+            
             if y_predict[0] == 1 and y_result[0][1] > y_filter and not self.slot_in_position(slot):
                 self.buy(symbol, slot, 1)
 
@@ -446,10 +443,10 @@ class TradeOrderBook:
 
 
 if __name__ == '__main__':
-    n_cdc = nDot_db_connector()
     n_tob = TradeOrderBook()
 
     n_tob.start_stream()
 
     while True:
         pass
+    
