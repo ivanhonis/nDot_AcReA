@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import pickle
 
 import numpy as np
 from datetime import datetime, timedelta
@@ -28,6 +29,19 @@ class TradeOrderBook:
         self.ts = None
 
         self.slot = {'BTCUSDT_S1': {'trade_symbol': 'BTCUSDT',
+                                    'y_filter': .50,
+                                    'x_type': 4,
+                                    'depth': 4,
+                                    'qmin': -50,
+                                    'qmax': 50,
+                                    'qstep': .5,
+                                    'stop_delta': .01 / 100,
+                                    'trailer_delta': .01 / 100,
+                                    'take_delta': .3 / 100,
+                                    'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
+                                    'max_time_sec': 120
+                                    },
+                     'BTCUSDT_S2': {'trade_symbol': 'BTCUSDT',
                                     'y_filter': .75,
                                     'x_type': 4,
                                     'depth': 4,
@@ -43,14 +57,21 @@ class TradeOrderBook:
                      }
 
         self._traded_symbols = ['BTCUSDT']
-        self._slots = ['BTCUSDT_S1']
-        self._symbol_slot = {'BTCUSDT': ['BTCUSDT_S1']}
+        self._slots = ['BTCUSDT_S1', 'BTCUSDT_S2']
+        self._symbol_slot = {'BTCUSDT': ['BTCUSDT_S1', 'BTCUSDT_S1']}
 
         self.max_depths = {'ETHUSDT': 3,
                        'BTCUSDT': 4,
                        'SOLUSDT': 3}
 
         self.slot_position = {'BTCUSDT_S1': {'symbol': '',
+                                             'qty': 0,
+                                             'income_price': 0,
+                                             'stop_price': 0,
+                                             'trailer_stop_price': 0,
+                                             'take_price': 0,
+                                             'enter_dt': None},
+                              'BTCUSDT_S2': {'symbol': '',
                                              'qty': 0,
                                              'income_price': 0,
                                              'stop_price': 0,
@@ -87,6 +108,14 @@ class TradeOrderBook:
         self.monitor_time = self.defa_slot_zero()
         self.monitor_profit = self.defa_slot_zero()
         self.monitor_fee = 0
+        self.status = {'monitor_stop': {},
+                       'monitor_take': {},
+                       'monitor_trailer': {},
+                       'monitor_time': {},
+                       'monitor_profit': {},
+                       'monitor_fee': {},
+                       'history_profit': []
+                       }
 
         # status line
         self.status_counter = 0
@@ -116,6 +145,23 @@ class TradeOrderBook:
         self.slot_position[slot]['take_price'] = 0
         self.slot_position[slot]['enter_dt'] = None
         self.monitor_fee += round((income_value * 0.025 / 100) + (exit_value * 0.025 / 100), 2)
+
+    def get_status(self):
+
+        self.status = {'monitor_stop': self.monitor_stop,
+        self.status                      'monitor_take': self.monitor_take,
+        self.status               'monitor_trailer': self.monitor_trailer,
+        self.status               'monitor_time': self.monitor_time,
+        self.status               'monitor_profit': self.monitor_profit,
+        self.status               'monitor_fee': self.monitor_fee,
+                       }
+
+        if len(self.status['history_profit']) == 0:
+            self.status['history_profit'].append(self.monitor_profit)
+        elif self.status['history_profit'][-1] != self.monitor_profit:
+            self.status['history_profit'].append(self.monitor_profit)
+
+        return self.status
 
     def open_pnl(self):
         pnl = 0
@@ -188,16 +234,19 @@ class TradeOrderBook:
             while True:
                 self.status_counter += 1
                 if self.status_counter > 100:
+                    pickle.dump(self.get_status(), open("paper_trade_multy_status.pickle", "wb"))
+                    print('save')
                     self.status_counter = 0
-                    profit_rounded = {key: round(self.monitor_profit[key], 2) for key in self.monitor_profit}
-                    pl = f"Stop: {self.monitor_stop}"\
-                         f" take: {self.monitor_take} " \
-                         f" trailer: {self.monitor_trailer}" \
-                         f" last: {self.monitor_time}" \
-                         f" total profit: {profit_rounded} / {self.monitor_fee} " \
-                         f"open_pnl: {self.open_pnl()}"
-                    pl = pl.replace('{', '').replace('}', '').replace("'", '')
-                    print("\r" + pl, end="")
+
+                    # profit_rounded = {key: round(self.monitor_profit[key], 2) for key in self.monitor_profit}
+                    # pl = f"Stop: {self.monitor_stop}"\
+                    #      f" take: {self.monitor_take} " \
+                    #      f" trailer: {self.monitor_trailer}" \
+                    #      f" last: {self.monitor_time}" \
+                    #      f" total profit: {profit_rounded} / {self.monitor_fee} " \
+                    #      f"open_pnl: {self.open_pnl()}"
+                    # pl = pl.replace('{', '').replace('}', '').replace("'", '')
+                    # print("\r" + pl, end="")
 
                 res = await tscm.recv()
                 # print(res)
