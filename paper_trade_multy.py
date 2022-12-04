@@ -1,9 +1,11 @@
 import os
+import random
 import sys
 import time
 import pickle
 
 import numpy as np
+import pandas as pd
 from datetime import datetime, timedelta
 # import matplotlib.pyplot as plt
 import asyncio
@@ -19,6 +21,12 @@ from tensorflow.keras.models import load_model
 
 np.set_printoptions(threshold=5000)
 
+pd.set_option('display.max_rows', None)
+pd.set_option('display.max_columns', None)
+pd.set_option('display.width', 2000)
+pd.set_option('display.float_format', '{:20,.2f}'.format)
+pd.set_option('display.max_colwidth', None)
+
 
 class TradeOrderBook:
 
@@ -28,61 +36,88 @@ class TradeOrderBook:
         self.bm = None
         self.ts = None
 
-        self.slot = {'BTCUSDT_S1': {'trade_symbol': 'BTCUSDT',
-                                    'y_filter': .50,
-                                    'x_type': 4,
-                                    'depth': 4,
-                                    'qmin': -50,
-                                    'qmax': 50,
-                                    'qstep': .5,
-                                    'stop_delta': .01 / 100,
-                                    'trailer_delta': .01 / 100,
-                                    'take_delta': .3 / 100,
-                                    'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
-                                    'max_time_sec': 120
-                                    },
-                     'BTCUSDT_S2': {'trade_symbol': 'BTCUSDT',
-                                    'y_filter': .75,
-                                    'x_type': 4,
-                                    'depth': 4,
-                                    'qmin': -50,
-                                    'qmax': 50,
-                                    'qstep': .5,
-                                    'stop_delta': .01 / 100,
-                                    'trailer_delta': .01 / 100,
-                                    'take_delta': .3 / 100,
-                                    'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
-                                    'max_time_sec': 120
-                                    }
-                     }
+        self.slot = {
+            # 'BTCUSDT_S1': {'trade_symbol': 'BTCUSDT',
+            #                'y_filter': .50,
+            #                'x_type': 4,
+            #                'depth': 4,
+            #                'qmin': -50,
+            #                'qmax': 50,
+            #                'qstep': .5,
+            #                'stop_delta': .01 / 100,
+            #                'trailer_delta': .015 / 100,
+            #                'take_delta': .3 / 100,
+            #                'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
+            #                'max_time_sec': 120
+            #                },
+            'BTCUSDt_S75': {'trade_symbol': 'BTCUSDT',
+                           'y_filter': .76,
+                           'x_type': 4,
+                           'depth': 4,
+                           'qmin': -50,
+                           'qmax': 50,
+                           'qstep': .5,
+                           'stop_delta': .5 / 100,
+                           'trailer_delta': .0025 / 100,
+                           'take_delta': .0045 / 100,
+                           'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
+                           'max_time_sec': 6
+                           },
+            'BTCUSDT_RND1': {'trade_symbol': 'BTCUSDT',
+                            'y_filter': .55,
+                            'x_type': 4,
+                            'depth': 4,
+                            'qmin': -50,
+                            'qmax': 50,
+                            'qstep': .5,
+                            'stop_delta': .5 / 100,
+                            'trailer_delta': .015 / 100,
+                            'take_delta': .009 / 100,
+                            'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
+                            'max_time_sec': 6
+                            },
+            'BTCUSDT_RND2': {'trade_symbol': 'BTCUSDT',
+                            'y_filter': .65,
+                            'x_type': 4,
+                            'depth': 4,
+                            'qmin': -50,
+                            'qmax': 50,
+                            'qstep': .5,
+                            'stop_delta': .5 / 100,
+                            'trailer_delta': .015 / 100,
+                            'take_delta': .009 / 100,
+                            'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
+                            'max_time_sec': 6 * 10
+                            },
+            'BTCUSDT_RND3': {'trade_symbol': 'BTCUSDT',
+                            'y_filter': .65,
+                            'x_type': 4,
+                            'depth': 4,
+                            'qmin': -50,
+                            'qmax': 50,
+                            'qstep': .5,
+                            'stop_delta': .5 / 100,
+                            'trailer_delta': .015 / 100,
+                            'take_delta': .009 / 100,
+                            'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
+                            'max_time_sec': 6 * 25
+                            }
+        }
 
-        self._traded_symbols = ['BTCUSDT']
-        self._slots = ['BTCUSDT_S1', 'BTCUSDT_S2']
-        self._symbol_slot = {'BTCUSDT': ['BTCUSDT_S1', 'BTCUSDT_S1']}
+        self._traded_symbols = []
+        self._slots = []
+        self._symbol_slot = {}
+        self._slot_position = {}
+        self._defa()
+
+        # egy adott symbolbol mennyi van
+        # csak akkor követia stop lost és a trailert ha van belőle
+        # ez pozíció vezetésre nem szolgál csak technikai gyorsításra, hogy ne kellejen kalkulálni
+        self._symbol_position = self.defa_symbol_zero()
 
         self.max_depths = {'ETHUSDT': 3,
                        'BTCUSDT': 4,
                        'SOLUSDT': 3}
-
-        self.slot_position = {'BTCUSDT_S1': {'symbol': '',
-                                             'qty': 0,
-                                             'income_price': 0,
-                                             'stop_price': 0,
-                                             'trailer_stop_price': 0,
-                                             'take_price': 0,
-                                             'enter_dt': None},
-                              'BTCUSDT_S2': {'symbol': '',
-                                             'qty': 0,
-                                             'income_price': 0,
-                                             'stop_price': 0,
-                                             'trailer_stop_price': 0,
-                                             'take_price': 0,
-                                             'enter_dt': None}
-                              }
-
-        # egy adott symbolbol mennyi van
-        # csak akkor követia stoplost ésatrailert ha van belőle
-        self.symbol_position = self.defa_symbol_zero()
 
         # utolsó piaci kötésvan benne
         # ez kell az get_x_3d normálásához
@@ -107,7 +142,7 @@ class TradeOrderBook:
         self.monitor_take = self.defa_slot_zero()
         self.monitor_time = self.defa_slot_zero()
         self.monitor_profit = self.defa_slot_zero()
-        self.monitor_fee = 0
+        self.monitor_fee = self.defa_slot_zero()
         self.status = {'monitor_stop': {},
                        'monitor_take': {},
                        'monitor_trailer': {},
@@ -118,64 +153,95 @@ class TradeOrderBook:
                        }
 
         # status line
-        self.status_counter = 0
+        self.status_last_save_dt = datetime.now() - timedelta(seconds=120)
+    
+    def _defa(self):
+        self._slots = []
+        for sl in self.slot:
+            self._slots.append(sl)
 
+        self._traded_symbols = []
+        for sl in self.slot:
+            if self.slot[sl]['trade_symbol'] not in self._traded_symbols:
+                self._traded_symbols.append(self.slot[sl]['trade_symbol'])
+
+        self._symbol_slot = {}
+        for symbol in self._traded_symbols:
+            self._symbol_slot = {symbol: []}
+            
+            for sl in self.slot:
+                if self.slot[sl]['trade_symbol'] == symbol:
+                    self._symbol_slot[symbol].append(sl)
+
+        self._slot_position = {}
+        for sl in self.slot:
+            self._slot_position[sl] = {'symbol': '',
+                                       'qty': 0,
+                                       'income_price': 0,
+                                       'stop_price': 0,
+                                       'trailer_stop_price': 0,
+                                       'trailer_minimum_price': 0,
+                                       'take_price': 0,
+                                       'enter_dt': None}
+        
     def buy(self, symbol, slot, qty):
-        self.slot_position[slot]['symbol'] = symbol
-        self.slot_position[slot]['qty'] = qty
-        self.slot_position[slot]['income_price'] = self.actual_ask_price[symbol]
-        self.slot_position[slot]['stop_price'] = self.slot_position[slot]['income_price'] * (1 - self.slot[slot]['stop_delta'])
-        self.slot_position[slot]['trailer_stop_price'] = self.slot_position[slot]['income_price'] * (1 - self.slot[slot]['trailer_delta'])
-        self.slot_position[slot]['take_price'] = self.slot_position[slot]['income_price'] * (1 + self.slot[slot]['take_delta'])
-        self.slot_position[slot]['enter_dt'] = datetime.now()
-        self.symbol_position[symbol] += qty
+        self._slot_position[slot]['symbol'] = symbol
+        self._slot_position[slot]['qty'] = qty
+        self._slot_position[slot]['income_price'] = self.actual_ask_price[symbol]
+        self._slot_position[slot]['stop_price'] = self._slot_position[slot]['income_price'] * (1 - self.slot[slot]['stop_delta'])
+        self._slot_position[slot]['trailer_stop_price'] = self._slot_position[slot]['income_price'] * (1 + self.slot[slot]['trailer_delta'])
+        self._slot_position[slot]['trailer_minimum_price'] = self._slot_position[slot]['income_price'] * (1 + self.slot[slot]['trailer_delta'])
+        self._slot_position[slot]['take_price'] = self._slot_position[slot]['income_price'] * (1 + self.slot[slot]['take_delta'])
+        self._slot_position[slot]['enter_dt'] = datetime.now()
+        self._symbol_position[symbol] += qty
         # print("")
         # print("Buy", symbol, slot, qty, self.slot_position[slot]['income_price'], self.actual_ask_qty[symbol])
 
     def stop(self, symbol, slot):
-        income_value = self.slot_position[slot]['qty'] * self.slot_position[slot]['income_price']
-        exit_value = self.slot_position[slot]['qty'] * self.actual_bid_price[symbol]
-        self.monitor_profit[slot] += (income_value - exit_value)
-        self.symbol_position[symbol] -= self.slot_position[slot]['qty']
-        self.slot_position[slot]['symbol'] = ''
-        self.slot_position[slot]['qty'] = 0
-        self.slot_position[slot]['income_price'] = 0
-        self.slot_position[slot]['stop_price'] = 0
-        self.slot_position[slot]['trailer_stop_price'] = 0
-        self.slot_position[slot]['take_price'] = 0
-        self.slot_position[slot]['enter_dt'] = None
-        self.monitor_fee += round((income_value * 0.025 / 100) + (exit_value * 0.025 / 100), 2)
+        income_value = self._slot_position[slot]['qty'] * self._slot_position[slot]['income_price']
+        exit_value = self._slot_position[slot]['qty'] * self.actual_bid_price[symbol]
+        # print(income_value, exit_value)
+        self.monitor_profit[slot] += (exit_value - income_value)
+        self._symbol_position[symbol] -= self._slot_position[slot]['qty']
+        self._slot_position[slot]['symbol'] = ''
+        self._slot_position[slot]['qty'] = 0
+        self._slot_position[slot]['income_price'] = 0
+        self._slot_position[slot]['stop_price'] = 0
+        self._slot_position[slot]['trailer_stop_price'] = 0
+        self._slot_position[slot]['trailer_minimum_price'] = 0
+        self._slot_position[slot]['take_price'] = 0
+        self._slot_position[slot]['enter_dt'] = None
+        self.monitor_fee[slot] += round((income_value * 0.025 / 100) + (exit_value * 0.025 / 100), 2)
 
     def get_status(self):
 
-        self.status = {'monitor_stop': self.monitor_stop,
-        self.status                      'monitor_take': self.monitor_take,
-        self.status               'monitor_trailer': self.monitor_trailer,
-        self.status               'monitor_time': self.monitor_time,
-        self.status               'monitor_profit': self.monitor_profit,
-        self.status               'monitor_fee': self.monitor_fee,
-                       }
+        self.status['monitor_stop'] = self.monitor_stop
+        self.status['monitor_take'] = self.monitor_take
+        self.status['monitor_trailer'] = self.monitor_trailer
+        self.status['monitor_time'] = self.monitor_time
+        self.status['monitor_profit'] = self.monitor_profit
+        self.status['monitor_fee'] = self.monitor_fee
 
-        if len(self.status['history_profit']) == 0:
-            self.status['history_profit'].append(self.monitor_profit)
-        elif self.status['history_profit'][-1] != self.monitor_profit:
-            self.status['history_profit'].append(self.monitor_profit)
+        # if len(self.status['history_profit']) == 0:
+        #     self.status['history_profit'].append(self.monitor_profit)
+        # elif self.status['history_profit'][-1] != self.monitor_profit:
+        #     self.status['history_profit'].append(self.monitor_profit)
 
         return self.status
 
     def open_pnl(self):
         pnl = 0
-        for slot in self.slot_position:
-            if self.slot_position[slot]['qty'] > 0:
-                income_value = self.slot_position[slot]['qty'] * self.slot_position[slot]['income_price']
-                exit_value = self.slot_position[slot]['qty'] * self.actual_bid_price[self.slot_position[slot]['symbol']]
+        for slot in self._slot_position:
+            if self._slot_position[slot]['qty'] > 0:
+                income_value = self._slot_position[slot]['qty'] * self._slot_position[slot]['income_price']
+                exit_value = self._slot_position[slot]['qty'] * self.actual_bid_price[self._slot_position[slot]['symbol']]
                 pnl += round(income_value - exit_value, 2)
         return pnl
     
     def slot_in_position(self, slot):
-        if self.slot_position[slot]['qty'] > 0:
+        if self._slot_position[slot]['qty'] > 0:
             return True
-        elif self.slot_position[slot]['qty'] == 0:
+        elif self._slot_position[slot]['qty'] == 0:
             return False
         else:
             print("Minusz pozíció!!!!!")
@@ -232,11 +298,17 @@ class TradeOrderBook:
         async with self.ts as tscm:
             # dot = '.'
             while True:
-                self.status_counter += 1
-                if self.status_counter > 100:
-                    pickle.dump(self.get_status(), open("paper_trade_multy_status.pickle", "wb"))
-                    print('save')
-                    self.status_counter = 0
+                if datetime.now() > self.status_last_save_dt + timedelta(seconds=30):
+                    status = self.get_status().copy()
+                    del status['history_profit']
+                    df = pd.DataFrame(status)
+                    # print(tres['history_profit'])
+                    print(datetime.now())
+                    print(df)
+    
+                    # pickle.dump(self.get_status(), open("paper_trade_multy_status.pickle", "wb"))
+                    # print("\r lasr save:" + str(datetime.now()), end="")
+                    self.status_last_save_dt = datetime.now()
 
                     # profit_rounded = {key: round(self.monitor_profit[key], 2) for key in self.monitor_profit}
                     # pl = f"Stop: {self.monitor_stop}"\
@@ -319,23 +391,26 @@ class TradeOrderBook:
                     self.actual_ask_price[symbol] = float(res['data']['a'])
                     self.actual_ask_qty[symbol] = float(res['data']['A'])
                     
-                    if self.symbol_position[symbol] > 0:
+                    if self._symbol_position[symbol] > 0:
                         for slot in self._symbol_slot[symbol]:
-                            act_traile_price = self.actual_bid_price[symbol] * (1 - self.slot[slot]['trailer_delta'])
-                            self.slot_position[slot]['trailer_stop_price'] = max(self.slot_position[slot]['trailer_stop_price'], act_traile_price)
-                            # print(self.slot_position)
-                            if self.actual_bid_price[symbol] >= self.slot_position[slot]['take_price']:
-                                self.stop(symbol, slot)
-                                self.monitor_take[slot] += 1
-                            elif self.slot_position[slot]['enter_dt'] + timedelta(seconds=self.slot[slot]['max_time_sec']) < datetime.now():
-                                self.stop(symbol, slot)
-                                self.monitor_time[slot] += 1
-                            elif self.actual_bid_price[symbol] < self.slot_position[slot]['stop_price']:
-                                self.stop(symbol, slot)
-                                self.monitor_stop[slot] += 1
-                            elif self.actual_bid_price[symbol] < self.slot_position[slot]['trailer_stop_price']:
-                                self.stop(symbol, slot)
-                                self.monitor_trailer[slot] += 1
+                            if self._slot_position[slot]['qty'] > 0:
+                                act_traile_price = self.actual_bid_price[symbol] * (1 - self.slot[slot]['trailer_delta'])
+                                self._slot_position[slot]['trailer_stop_price'] = max(self._slot_position[slot]['trailer_stop_price'], act_traile_price)
+                                # print(self.slot_position)
+                                if self.actual_bid_price[symbol] >= self._slot_position[slot]['take_price']:
+                                    self.stop(symbol, slot)
+                                    self.monitor_take[slot] += 1
+                                elif self._slot_position[slot]['enter_dt'] + timedelta(seconds=self.slot[slot]['max_time_sec']) < datetime.now():
+                                    self.stop(symbol, slot)
+                                    self.monitor_time[slot] += 1
+                                elif self.actual_bid_price[symbol] < self._slot_position[slot]['stop_price']:
+                                    # print("    bid", self.actual_bid_price[symbol], "stop   ", self.slot_position[slot]['stop_price'])
+                                    self.stop(symbol, slot)
+                                    self.monitor_stop[slot] += 1
+                                elif self._slot_position[slot]['trailer_stop_price'] > self._slot_position[slot]['trailer_minimum_price'] \
+                                        and self.actual_bid_price[symbol] < self._slot_position[slot]['trailer_stop_price']:
+                                    self.stop(symbol, slot)
+                                    self.monitor_trailer[slot] += 1
 
     # async def show_prices(self):
     #
@@ -358,18 +433,59 @@ class TradeOrderBook:
         qmax = self.slot[slot]['qmax']
         qstep = self.slot[slot]['qstep']
         depth = self.slot[slot]['depth']
-        px = self.get_x_3d(orderbooks, base_prices, x_type=x_type, qmin=qmin, qmax=qmax, qstep=qstep, depth=depth)
+        
+        rnd_strat = ['BTCUSDT_RND1', 'BTCUSDT_RND2', 'BTCUSDT_RND3']
+        
+        if slot in rnd_strat:
+            px = [0, 0, 0]
+        else:
+            px = self.get_x_3d(orderbooks, base_prices, x_type=x_type, qmin=qmin, qmax=qmax, qstep=qstep, depth=depth)
 
         if len(px) > 0 and not np.any(np.isnan(px)) and not np.any(np.isinf(px)):
+    
+            if slot in rnd_strat:
+    
+                rev_orderbooks = orderbooks[::-1]
+                # rev_base_prices = base_prices[::-1]
+    
+                mid_ob1 = (float(rev_orderbooks[0]['bids'][0][0]) + float(rev_orderbooks[0]['asks'][0][0])) / 2
+                mid_ob2 = (float(rev_orderbooks[1]['bids'][0][0]) + float(rev_orderbooks[1]['asks'][0][0])) / 2
+                mid_o03 = (float(rev_orderbooks[2]['bids'][0][0]) + float(rev_orderbooks[2]['asks'][0][0])) / 2
+                
+                ob1_qty_b = float(rev_orderbooks[0]['bids'][0][1])
+                ob2_qty_b = float(rev_orderbooks[1]['bids'][0][1])
+                ob3_qty_b = float(rev_orderbooks[2]['bids'][0][1])
 
-            # aget_x_3d 3 dimenziós tömböt ad vissza, de a neur 4 dimenzóat vár.
-            # kibővítem 1 deimenzióval
-            x = np.zeros((1, px.shape[0], px.shape[1], px.shape[2]), dtype=np.float32)
-            x[0] = px
+                ob1_qty_a = float(rev_orderbooks[0]['asks'][0][1])
+                ob2_qty_a = float(rev_orderbooks[1]['asks'][0][1])
+                ob3_qty_a = float(rev_orderbooks[2]['asks'][0][1])
 
-            y_result = self.models[slot].predict(x, verbose=0, batch_size=1)
+                ob_sum_qty_b = 0
+                ob_sum_qty_a = 0
+                
+                for d in range(len(rev_orderbooks)):
+                    for r in range(len(rev_orderbooks[0]['bids'])):
+                        ob_sum_qty_b = float(rev_orderbooks[d]['bids'][r][1])
+                        ob_sum_qty_a = float(rev_orderbooks[d]['asks'][r][1])
+
+                # last_avg = sum(base_prices) / len(base_prices)
+                if mid_ob1 > mid_ob2 > mid_o03 and \
+                        ob1_qty_b < ob2_qty_b < ob3_qty_b and \
+                        ob1_qty_a > ob2_qty_a > ob3_qty_a and \
+                        ob_sum_qty_a > ob_sum_qty_b:
+                    y_result = [[0, 1]]
+                else:
+                    y_result = [[1, 0]]
+            else:
+                # aget_x_3d 3 dimenziós tömböt ad vissza, de a neur 4 dimenzóat vár.
+                # kibővítem 1 deimenzióval
+                x = np.zeros((1, px.shape[0], px.shape[1], px.shape[2]), dtype=np.float32)
+                x[0] = px
+
+                y_result = self.models[slot].predict(x, verbose=0, batch_size=1)
+                # print(y_result)
+
             y_predict = np.argmax(y_result, axis=1)
-            
             y_filter = self.slot[slot]['y_filter']
             
             if y_predict[0] == 1 and y_result[0][1] > y_filter and not self.slot_in_position(slot):
