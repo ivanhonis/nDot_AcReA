@@ -51,7 +51,7 @@ class TradeOrderBook:
             #                'max_time_sec': 120
             #                },
             'BTCUSDt_S75': {'trade_symbol': 'BTCUSDT',
-                           'y_filter': .76,
+                           'y_filter': .83,
                            'x_type': 4,
                            'depth': 4,
                            'qmin': -50,
@@ -100,7 +100,7 @@ class TradeOrderBook:
                             'trailer_delta': .015 / 100,
                             'take_delta': .009 / 100,
                             'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
-                            'max_time_sec': 6 * 25
+                            'max_time_sec': 5
                             }
         }
 
