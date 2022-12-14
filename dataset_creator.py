@@ -8,6 +8,11 @@ from nDot_crypto_db_connector import nDot_db_connector
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 
+from imblearn.under_sampling import RandomUnderSampler
+from imblearn.over_sampling import RandomOverSampler
+from imblearn.over_sampling import SMOTE, ADASYN
+from imblearn import over_sampling
+
 np.set_printoptions(threshold=5000)
 
 
@@ -36,7 +41,8 @@ class OrderBookDataset:
                 else:
                     return []
 
-        elif x_type == 6:
+
+        elif x_type in [6, 33]:
             base_dt_tick = dt - timedelta(seconds=1)
             res_tick_base = self.n_cdc.get_tick_data(symbol, base_dt_tick)
             if res_tick_base and len(res_tick_base['all']) > 0:
@@ -144,6 +150,109 @@ class OrderBookDataset:
 
                 ir = [bids_scaled_qt, asks_scaled_qt]
                 iret_pre.append(ir)
+
+            iret_b = []
+            iret_a = []
+            for i in range(len(iret_pre[0][0])):
+                deep_dot_b = []
+                deep_dot_a = []
+                for d in range(depth):
+                    deep_dot_b.append(iret_pre[d][0][i])
+                    deep_dot_a.append(iret_pre[d][1][i])
+                iret_b.append(deep_dot_b)
+                iret_a.append(deep_dot_a)
+
+            return np.array([iret_b, iret_a])
+
+        elif x_type == 32:
+
+            iret_pre = []
+            for d in range(depth):
+
+                bids_prices = np.array(orderbooks[d]['bids'], dtype=np.float32)[:, 0]
+                bids_qty = np.array(orderbooks[d]['bids'], dtype=np.float32)[:, 1]
+
+                asks_prices = np.array(orderbooks[d]['asks'], dtype=np.float32)[:, 0]
+                asks_qty = np.array(orderbooks[d]['asks'], dtype=np.float32)[:, 1]
+
+                base_array = np.full(asks_prices.shape, base_prices[d], dtype=np.float32)
+
+                c1 = (np.divide(bids_prices, base_array) - 1) * 100000
+                c2 = (np.divide(asks_prices, base_array) - 1) * 100000
+
+                boxes = np.arange(qmin, qmax, qstep).astype(np.float32)
+                bids_scaled_qt = np.zeros(len(boxes) + 1).astype(np.float32)
+                asks_scaled_qt = np.zeros(len(boxes) + 1).astype(np.float32)
+
+                for i in range(20):
+                    bid_pos = np.searchsorted(boxes, c1[i])
+                    ask_pos = np.searchsorted(boxes, c2[i])
+
+                    # print(ask_pos, bid_pos)
+
+                    bids_scaled_qt[bid_pos] += float(bids_qty[i])
+                    asks_scaled_qt[ask_pos] += float(asks_qty[i])
+
+                # csak az arányát teszem be a datasetbe
+
+                bids_scaled_qt = bids_scaled_qt / (max(np.sum(bids_scaled_qt), np.sum(asks_scaled_qt)))
+                asks_scaled_qt = asks_scaled_qt / (max(np.sum(bids_scaled_qt), np.sum(asks_scaled_qt)))
+
+                ir = [bids_scaled_qt, asks_scaled_qt]
+                iret_pre.append(ir)
+
+            iret_b = []
+            iret_a = []
+            for i in range(len(iret_pre[0][0])):
+                deep_dot_b = []
+                deep_dot_a = []
+                for d in range(depth):
+                    deep_dot_b.append(iret_pre[d][0][i])
+                    deep_dot_a.append(iret_pre[d][1][i])
+                iret_b.append(deep_dot_b)
+                iret_a.append(deep_dot_a)
+
+            return np.array([iret_b, iret_a])
+
+        elif x_type == 33:
+
+            iret_pre = []
+            set_max = float(0.0)
+            for d in range(depth):
+
+                bids_prices = np.array(orderbooks[d]['bids'], dtype=np.float32)[:, 0]
+                bids_qty = np.array(orderbooks[d]['bids'], dtype=np.float32)[:, 1]
+
+                asks_prices = np.array(orderbooks[d]['asks'], dtype=np.float32)[:, 0]
+                asks_qty = np.array(orderbooks[d]['asks'], dtype=np.float32)[:, 1]
+
+                base_array = np.full(asks_prices.shape, base_prices[0], dtype=np.float32)
+
+                c1 = (np.divide(bids_prices, base_array) - 1) * 100000
+                c2 = (np.divide(asks_prices, base_array) - 1) * 100000
+
+                boxes = np.arange(qmin, qmax, qstep).astype(np.float32)
+                bids_scaled_qt = np.zeros(len(boxes) + 1).astype(np.float32)
+                asks_scaled_qt = np.zeros(len(boxes) + 1).astype(np.float32)
+
+                for i in range(20):
+                    bid_pos = np.searchsorted(boxes, c1[i])
+                    ask_pos = np.searchsorted(boxes, c2[i])
+
+                    # print(ask_pos, bid_pos)
+
+                    bids_scaled_qt[bid_pos] += float(bids_qty[i])
+                    asks_scaled_qt[ask_pos] += float(asks_qty[i])
+
+                # csak az arányát teszem be a datasetbe
+                set_max = max(np.sum(bids_scaled_qt), np.sum(asks_scaled_qt), set_max)
+
+                ir = [bids_scaled_qt, asks_scaled_qt]
+                iret_pre.append(ir)
+
+            for d in range(depth):
+                iret_pre[d][0] = iret_pre[d][0] / set_max
+                iret_pre[d][1] = iret_pre[d][0] / set_max
 
             iret_b = []
             iret_a = []
@@ -292,8 +401,58 @@ class OrderBookDataset:
 
                 # csak az arányát teszem be a datasetbe
 
+                bids_scaled_qt = bids_scaled_qt / ((np.sum(bids_scaled_qt) + np.sum(asks_scaled_qt)) / 2)
+                asks_scaled_qt = asks_scaled_qt / ((np.sum(bids_scaled_qt) + np.sum(asks_scaled_qt)) / 2)
+
+                ir = [bids_scaled_qt, asks_scaled_qt]
+                iret_pre.append(ir)
+
+            iret_b = []
+            iret_a = []
+            for i in range(len(iret_pre[0][0])):
+                deep_dot_b = []
+                deep_dot_a = []
+                for d in range(depth):
+                    deep_dot_b.append(iret_pre[d][0][i])
+                    deep_dot_a.append(iret_pre[d][1][i])
+                iret_b.append(deep_dot_b)
+                iret_a.append(deep_dot_a)
+
+            return np.array([iret_b, iret_a])
+
+        elif x_type == 7:
+
+            iret_pre = []
+            for d in range(depth):
+
+                bids_prices = np.array(orderbooks[d]['bids'], dtype=np.float32)[:, 0]
+                bids_qty = np.array(orderbooks[d]['bids'], dtype=np.float32)[:, 1]
+
+                asks_prices = np.array(orderbooks[d]['asks'], dtype=np.float32)[:, 0]
+                asks_qty = np.array(orderbooks[d]['asks'], dtype=np.float32)[:, 1]
+
+                base_array = np.full(asks_prices.shape, base_prices[0], dtype=np.float32)
+
+                c1 = (np.divide(bids_prices, base_array) - 1) * 100000
+                c2 = (np.divide(asks_prices, base_array) - 1) * 100000
+
+                boxes = np.arange(qmin, qmax, qstep).astype(np.float32)
+                bids_scaled_qt = np.zeros(len(boxes) + 1).astype(np.float32)
+                asks_scaled_qt = np.zeros(len(boxes) + 1).astype(np.float32)
+
+                for i in range(20):
+                    bid_pos = np.searchsorted(boxes, c1[i])
+                    ask_pos = np.searchsorted(boxes, c2[i])
+
+                    # print(ask_pos, bid_pos)
+
+                    bids_scaled_qt[bid_pos] += float(bids_qty[i])
+                    asks_scaled_qt[ask_pos] += float(asks_qty[i])
+
+                # csak az arányát teszem be a datasetbe
+
                 bids_scaled_qt = bids_scaled_qt / np.sum(bids_scaled_qt)
-                asks_scaled_qt = asks_scaled_qt / np.sum(asks_scaled_qt)
+                asks_scaled_qt = asks_scaled_qt / np.sum(bids_scaled_qt)
 
                 ir = [bids_scaled_qt, asks_scaled_qt]
                 iret_pre.append(ir)
@@ -520,7 +679,7 @@ class OrderBookDataset:
                     over_enter = (tick_price >= enter_price).sum()
                     prob = over_enter / (under_enter + over_enter)
                     if prob > exp_prob:
-                        # print(enter_price, exit_price - cost, cost, profit)
+                        # print(max(tick_price) / enter_price)
                         return 1, 0
                     else:
                         return 0, 0
@@ -594,7 +753,7 @@ class OrderBookDataset:
 
 
 if __name__ == '__main__':
-    gdrive_path = "X:/Apa/cloud/GoogleDriveSync/nDot_Colabs/"
+    gdrive_path = "D:/Clouds/GoogleDrive/nDot_Colabs/"
 
     n_obds = OrderBookDataset()
     n_obds.set_margin(0.020 / 100)
@@ -603,8 +762,8 @@ if __name__ == '__main__':
     symbol = "BTCUSDT"
     # sub_dataset = "y3_5_20_depth_4"
     # sub_dataset = "y3_5_20"
-    sub_dataset = "boo"
-    depth = 4
+    sub_dataset = "azoo5"
+    depth = 3
     broadcast = 201
 
     # const
@@ -617,10 +776,10 @@ if __name__ == '__main__':
         if t_set == 0:
             print("Create dataset for TRAIN")
 
-            date_time_string_ob = "2022-09-05 00:00:00"
+            date_time_string_ob = "2022-10-01 00:00:00"
             dt = datetime.fromisoformat(date_time_string_ob)
-            maxit01 = 60 * 60 * 24 * 10
-            maxit1 = 60 * 60 * 24 * 20
+            maxit01 = 60 * 60 * 24 * 35
+            maxit1 = 60 * 60 * 24 * 0
             # BTC ETH 5 20 10.03
 
             maxit = maxit01 + maxit1
@@ -634,9 +793,9 @@ if __name__ == '__main__':
 
         else:
             print("Create dataset for Test")
-            date_time_string_ob = "2022-11-26 00:00:00"
+            date_time_string_ob = "2022-09-25 00:00:00"
             dt = datetime.fromisoformat(date_time_string_ob)
-            maxit01 = 60 * 60 * 24 * 1
+            maxit01 = 60 * 60 * 24 * 5
             maxit1 = 60 * 60 * 24 * 10 * 0
             maxit = maxit01 + maxit1
             count_all = 0
@@ -677,7 +836,7 @@ if __name__ == '__main__':
             # y_sig, y_profit = n_obds.get_y(symbol, dt, y_type=2, enter_delay_sec=0, time_window_sec=2, margin=.020/100)
             # y_sig, y_profit = n_obds.get_y(symbol, dt, y_type=3, enter_delay_sec=0, time_window_sec=3, margin=.020 / 100)
             # 09.15. 5,15 -  11.01 10,0
-            y_sig, y_profit = n_obds.get_y(symbol, dt, y_type=4, enter_delay_sec=0, time_window_sec=4, margin=.017 / 100, exp_prob=.8325)
+            y_sig, y_profit = n_obds.get_y(symbol, dt, y_type=3, enter_delay_sec=0, time_window_sec=3, margin=.02 / 100, exp_prob=.85)
 
             # print(y_sig)
             # print(np.array(y_sig).shape)
@@ -685,7 +844,7 @@ if __name__ == '__main__':
             # x = n_obds.get_x(symbol, dt, x_type=3, qmin=-50, qmax=50, qstep=.5)
             if y_sig in y_need:
                 dtx0 = datetime.now()
-                x = n_obds.get_x_3d(symbol, dt, x_type=3, qmin=-50, qmax=50, qstep=.5, depth=depth)
+                x = n_obds.get_x_3d(symbol, dt, x_type=5, qmin=-50, qmax=50, qstep=.5, depth=depth)
                 # print(x.shape)
                 dtx1 = datetime.now()
             else:
@@ -718,10 +877,20 @@ if __name__ == '__main__':
         x_ds = x_ds[0:count_all]
         y_ds = y_ds[0:count_all]
 
+        ou_samle = True
+        if ou_samle and t_set == 0:
+            ori_shape = x_ds.shape
+            x_ds = np.reshape(x_ds, (x_ds.shape[0], x_ds.shape[1] * x_ds.shape[2] * x_ds.shape[3]))
+            # X_train_np, y_train_np = RandomOverSampler(sampling_strategy='auto').fit_resample(X_train_np, y_train_np)
+            x_ds, y_ds = RandomUnderSampler(sampling_strategy='auto').fit_resample(x_ds, y_ds)
+            # x_ds, y_ds = SMOTE().fit_resample(X_train_np, y_train_np)
+            x_ds = np.reshape(x_ds, (x_ds.shape[0], ori_shape[1], ori_shape[2], ori_shape[3]))
+
         print("")
-        print("Last dt:", dt)
-        print("x_ds.shape", x_ds.shape)
-        print("y_ds.shape", y_ds.shape)
+        print("   Last dt:", dt)
+        print("x_ds.shape:", x_ds.shape)
+        print("y_ds.shape:", y_ds.shape)
+        print('      y_ds:', np.unique(y_ds, return_counts=True))
 
         # print(f"{gdrive_path}{symbol}/{sub_dataset}/{projekt_name}{sufix}_X")
         # print(f"{gdrive_path}{symbol}/{sub_dataset}/{projekt_name}{sufix}_y")

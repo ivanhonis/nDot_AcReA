@@ -24,7 +24,7 @@ np.set_printoptions(threshold=5000)
 pd.set_option('display.max_rows', None)
 pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 2000)
-pd.set_option('display.float_format', '{:8,.4f}'.format)
+pd.set_option('display.float_format', '{:20,.2f}'.format)
 pd.set_option('display.max_colwidth', None)
 
 
@@ -50,32 +50,30 @@ class TradeOrderBook:
             #                'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
             #                'max_time_sec': 120
             #                },
-            # 'BTCUSDT_SX1': {'trade_symbol': 'BTCUSDT',
-            #                'y_filter': .931,
-            #                'x_type': 33,
-            #                'depth': 3,
-            #                'qmin': -50,
-            #                'qmax': 50,
-            #                'qstep': .5,
-            #                'stop_delta': .02 / 100,
-            #                'trailer_delta': .005 / 100,
-            #                'take_delta': .01 / 100,
-            #                'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
-            #                'max_time_sec': 6
-            #                },
-            # 'BTCUSDT_SX2': {'trade_symbol': 'BTCUSDT',
-            #                'y_filter': .7,
-            #                'x_type': 33,
-            #                'depth': 3,
-            #                'qmin': -50,
-            #                'qmax': 50,
-            #                'qstep': .5,
-            #                'stop_delta': .04 / 100,
-            #                'trailer_delta': .0005 / 100,
-            #                'take_delta': .025 / 100,
-            #                'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
-            #                'max_time_sec': 4
-            #                },
+            'BTCUSDT_SX1': {'trade_symbol': 'BTCUSDT',
+                           'y_filter': .931,
+                           'x_type': 33,
+                           'depth': 3,
+                           'qmin': -50,
+                           'qmax': 50,
+                           'qstep': .5,
+                           'stop_delta': .02 / 100,
+                           'trailer_delta': .005 / 100,
+                           'take_delta': .01 / 100,
+                           'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
+                           'max_time_sec': 6},
+            'BTCUSDT_SX2': {'trade_symbol': 'BTCUSDT',
+                           'y_filter': .7,
+                           'x_type': 33,
+                           'depth': 3,
+                           'qmin': -50,
+                           'qmax': 50,
+                           'qstep': .5,
+                           'stop_delta': .04 / 100,
+                           'trailer_delta': .0005 / 100,
+                           'take_delta': .025 / 100,
+                           'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
+                           'max_time_sec': 4},
             'BTCUSDT_SX3': {'trade_symbol': 'BTCUSDT',
                             'y_filter': .65,
                             'x_type': 33,
@@ -87,47 +85,43 @@ class TradeOrderBook:
                             'trailer_delta': .0003 / 100,
                             'take_delta': .01 / 100,
                             'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
-                            'max_time_sec': 10 * 60 * 2
-                            },
-            # 'BTCUSDT_RND1': {'trade_symbol': 'BTCUSDT',
-            #                 'y_filter': .55,
-            #                 'x_type': 4,
-            #                 'depth': 4,
-            #                 'qmin': -50,
-            #                 'qmax': 50,
-            #                 'qstep': .5,
-            #                 'stop_delta': .5 / 100,
-            #                 'trailer_delta': .015 / 100,
-            #                 'take_delta': .009 / 100,
-            #                 'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
-            #                 'max_time_sec': 6
-            #                 },
-            # 'BTCUSDT_RND2': {'trade_symbol': 'BTCUSDT',
-            #                 'y_filter': .65,
-            #                 'x_type': 4,
-            #                 'depth': 4,
-            #                 'qmin': -50,
-            #                 'qmax': 50,
-            #                 'qstep': .5,
-            #                 'stop_delta': .5 / 100,
-            #                 'trailer_delta': .002 / 100,
-            #                 'take_delta': .015 / 100,
-            #                 'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
-            #                 'max_time_sec': 6 * 10
-            #                 },
-            # 'BTCUSDT_RND3': {'trade_symbol': 'BTCUSDT',
-            #                 'y_filter': .40,
-            #                 'x_type': 4,
-            #                 'depth': 4,
-            #                 'qmin': -50,
-            #                 'qmax': 50,
-            #                 'qstep': .5,
-            #                 'stop_delta': .9 / 100,
-            #                 'trailer_delta': .0003 / 100,
-            #                 'take_delta': .01 / 100,
-            #                 'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
-            #                 'max_time_sec': 10 * 60 * 2
-            #                 }
+                            'max_time_sec': 10 * 60 * 2},
+            'BTCUSDT_RND1': {'trade_symbol': 'BTCUSDT',
+                            'y_filter': .55,
+                            'x_type': 4,
+                            'depth': 4,
+                            'qmin': -50,
+                            'qmax': 50,
+                            'qstep': .5,
+                            'stop_delta': .5 / 100,
+                            'trailer_delta': .015 / 100,
+                            'take_delta': .009 / 100,
+                            'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
+                            'max_time_sec': 6},
+            'BTCUSDT_RND2': {'trade_symbol': 'BTCUSDT',
+                            'y_filter': .65,
+                            'x_type': 4,
+                            'depth': 4,
+                            'qmin': -50,
+                            'qmax': 50,
+                            'qstep': .5,
+                            'stop_delta': .5 / 100,
+                            'trailer_delta': .002 / 100,
+                            'take_delta': .015 / 100,
+                            'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
+                            'max_time_sec': 6 * 10},
+            'BTCUSDT_RND3': {'trade_symbol': 'BTCUSDT',
+                            'y_filter': .40,
+                            'x_type': 4,
+                            'depth': 4,
+                            'qmin': -50,
+                            'qmax': 50,
+                            'qstep': .5,
+                            'stop_delta': .9 / 100,
+                            'trailer_delta': .0003 / 100,
+                            'take_delta': .01 / 100,
+                            'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
+                            'max_time_sec': 10 * 60 * 2}
         }
 
         self._traded_symbols = []
@@ -168,14 +162,14 @@ class TradeOrderBook:
         self.monitor_take = self.defa_slot_zero()
         self.monitor_time = self.defa_slot_zero()
         self.monitor_profit = self.defa_slot_zero()
-        self.monitor_max_loss = self.defa_slot_zero()
+        self.monitor_invert_profit = self.defa_slot_zero()
         self.monitor_fee = self.defa_slot_zero()
         self.status = {'monitor_stop': {},
                        'monitor_take': {},
                        'monitor_trailer': {},
                        'monitor_time': {},
                        'monitor_profit': {},
-                       'monitor_max_loss': {},
+                       'monitor_invert_profit': {},
                        'monitor_fee': {},
                        'history_profit': []
                        }
@@ -205,7 +199,9 @@ class TradeOrderBook:
         for sl in self.slot:
             self._slot_position[sl] = {'symbol': '',
                                        'qty': 0,
+                                       'invert_qt': 0,
                                        'income_price': 0,
+                                       'invert_income_price': 0,
                                        'stop_price': 0,
                                        'trailer_stop_price': 0,
                                        'trailer_minimum_price': 0,
@@ -215,7 +211,9 @@ class TradeOrderBook:
     def buy(self, symbol, slot, qty):
         self._slot_position[slot]['symbol'] = symbol
         self._slot_position[slot]['qty'] = qty
+        self._slot_position[slot]['invert_qty'] = -qty
         self._slot_position[slot]['income_price'] = self.actual_ask_price[symbol]
+        self._slot_position[slot]['invert_income_price'] = self.actual_bid_price[symbol]
         self._slot_position[slot]['stop_price'] = self._slot_position[slot]['income_price'] * (1 - self.slot[slot]['stop_delta'])
         self._slot_position[slot]['trailer_stop_price'] = self._slot_position[slot]['income_price'] * (1 + self.slot[slot]['trailer_delta'])
         self._slot_position[slot]['trailer_minimum_price'] = self._slot_position[slot]['income_price'] * (1 + self.slot[slot]['trailer_delta'])
@@ -228,12 +226,18 @@ class TradeOrderBook:
     def stop(self, symbol, slot):
         income_value = self._slot_position[slot]['qty'] * self._slot_position[slot]['income_price']
         exit_value = self._slot_position[slot]['qty'] * self.actual_bid_price[symbol]
+
+        invert_income_value = self._slot_position[slot]['invert_qty'] * self._slot_position[slot]['invert_income_price']
+        invert_exit_value = self._slot_position[slot]['invert_qty'] * self.actual_ask_price[symbol]
+
         # print(income_value, exit_value)
         self.monitor_profit[slot] += (exit_value - income_value)
+        self.monitor_invert_profit[slot] += (invert_exit_value - invert_income_value)
         self._symbol_position[symbol] -= self._slot_position[slot]['qty']
         self._slot_position[slot]['symbol'] = ''
         self._slot_position[slot]['qty'] = 0
         self._slot_position[slot]['income_price'] = 0
+        self._slot_position[slot]['invert_income_price'] = 0
         self._slot_position[slot]['stop_price'] = 0
         self._slot_position[slot]['trailer_stop_price'] = 0
         self._slot_position[slot]['trailer_minimum_price'] = 0
@@ -248,7 +252,7 @@ class TradeOrderBook:
         self.status['monitor_trailer'] = self.monitor_trailer
         self.status['monitor_time'] = self.monitor_time
         self.status['monitor_profit'] = self.monitor_profit
-        self.status['monitor_max_loss'] = self.monitor_max_loss
+        self.status['monitor_invert_profit'] = self.monitor_invert_profit
         self.status['monitor_fee'] = self.monitor_fee
 
         # if len(self.status['history_profit']) == 0:
@@ -423,10 +427,6 @@ class TradeOrderBook:
                     if self._symbol_position[symbol] > 0:
                         for slot in self._symbol_slot[symbol]:
                             if self._slot_position[slot]['qty'] > 0:
-
-                                loss = (self._slot_position[slot]['income_price'] / self.actual_bid_price[symbol]) - 1
-                                self.monitor_max_loss[slot] = min(self.monitor_max_loss[slot], loss)
-
                                 act_traile_price = self.actual_bid_price[symbol] * (1 - self.slot[slot]['trailer_delta'])
                                 self._slot_position[slot]['trailer_stop_price'] = max(self._slot_position[slot]['trailer_stop_price'], act_traile_price)
                                 # print(self.slot_position)

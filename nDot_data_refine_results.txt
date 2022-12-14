@@ -103,3 +103,10 @@
              nallowed, 1,
              all_datapoints, 4020214
              
+2022-12-05 08:07:56.931438,
+             orig_orig, 135,
+             orig_smoot, 79,
+             smoot_orig, 165,
+             nallowed, 0,
+             all_datapoints, 14662196
+             

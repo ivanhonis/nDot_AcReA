@@ -24,8 +24,8 @@ class nDot_db_connector:
         self.tickdata_files_in_memory = []
         self.tickdata_max_files_in_memory = 2
 
-        self.path_orderbook = "X:/Apa/coder/crypto_db_ndot/order_book/"
-        self.path_tickdata = "X:/Apa/coder/crypto_db_ndot/tick_data/"
+        self.path_orderbook = "D:/Devs/Data/crypto_db_ndot/order_book/"
+        self.path_tickdata = "D:/Devs/Data/crypto_db_ndot/tick_data/"
 
         # ordebook now() és a helyi now()  között van egy óra eltérés
         # orderbook a vultrben keletkezik és adat érkezésekor kap egy időbélyeget
@@ -154,6 +154,9 @@ class nDot_db_connector:
     def unix_to_datetime(ts):
         ts = int(ts)
         return datetime.fromtimestamp(int(ts) / 1000)
+
+    def preloader(self, from_dt, to_dt):
+        pass
 
 
 if __name__ == '__main__':

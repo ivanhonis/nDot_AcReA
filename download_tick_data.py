@@ -204,7 +204,7 @@ while True:
     # Save data
     for sy in symbols:
         # kb 25 megánként kiírom
-        if len(collected_data[sy]) > 300000:  ## kb 25 MB
+        if len(collected_data[sy]) > 300000:  # kb 25 MB
             save_collected_data(sy, collected_data[sy])
             collected_data[sy] = []
 
