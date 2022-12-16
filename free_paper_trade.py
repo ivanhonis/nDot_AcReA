@@ -106,15 +106,15 @@ class TradeOrderBook:
             #                 'extra_take_delta': .9 / 100,
             #                 }
             'BTCUSDT_SX3': {'trade_symbol': 'BTCUSDT',
-                            'y_filter': .69,
+                            'y_filter': .82,
                             'x_type': 3,
                             'depth': 3,
                             'qmin': -50,
                             'qmax': 50,
                             'qstep': .5,
-                            'stop_delta': .02 / 100,
-                            'trailer_delta': 0.9 / 100,
-                            'take_delta': .9 / 100,
+                            'stop_delta': .025 / 100,
+                            'trailer_delta': .005 / 100,
+                            'take_delta': .1 / 100,
                             'tf_model_file': f"projects/LOB/BTCUSDT/nDot_TF_MODEL_LOB_BTCUSDT.h5",
                             'max_time_sec': 5 * 1,
                             'extra_time_sec': 30 * 1,
@@ -150,11 +150,12 @@ class TradeOrderBook:
         self.actual_bid_qty = self.defa_symbol_zero()
         self.actual_ask_qty = self.defa_symbol_zero()
 
-        self.best_bid_price_history = [0.0] * 3000
-        self.best_ask_price_history = [0.0] * 3000
-        self.best_bid_qty_history = [0.0] * 3000
-        self.best_ask_qty_history = [0.0] * 3000
-        self.traded_price_history = [0.0] * 3000
+        self.best_bid_price_history = [17300.0] * 3000
+        self.best_ask_price_history = [17300.0] * 3000
+        self.best_bid_qty_history = [17300.0] * 3000
+        self.best_ask_qty_history = [17300.0] * 3000
+        self.traded_price_history = [17300.0] * 3000
+        self.decision_history = [0] * 3000
         self.ylim_max = 0
         self.ylim_min = 0
         self.trend = ""
@@ -189,55 +190,158 @@ class TradeOrderBook:
 
     def strat_threads(self):
         task1 = Thread(target=self.bookticker_thr, args=[])
-        task2 = Thread(target=self.trade_thr, args=[])
-        task3 = Thread(target=self.orderbook_thr, args=[])
+        # task2 = Thread(target=self.trade_thr, args=[])
+        # task3 = Thread(target=self.orderbook_thr, args=[])
         task4 = Thread(target=self.bookticker_trend_thr, args=[])
+        task5 = Thread(target=self.deal_hunter_thr, args=[])
+        task6 = Thread(target=self.print_monitor, args=[])
 
-        task2.start()
-        time.sleep(1)
+        task1.start()
+        time.sleep(5)
+        # task2.start()
+        # time.sleep(1)
         task4.start()
         time.sleep(5)
-        task1.start()
-        time.sleep(.5)
-        task3.start()
 
-        limdif = .002
+        # time.sleep(5)
+        # task3.start()
+        task5.start()
+        task6.start()
 
-        self.ylim_min = self.best_bid_price_history[-1] * (1 + limdif)
-        self.ylim_max = self.best_ask_price_history[-1] * (1 - limdif)
+        self.limdif = .001
 
-        fig = plt.figure(figsize=(15, 8))
-        self.ax1 = fig.add_subplot(1, 1, 1)
-        ani = animation.FuncAnimation(fig, self.animate_plot, interval=1000)
+        fig, ax = plt.subplots(2, 1,
+                               gridspec_kw={'height_ratios': [6, 1]},
+                               figsize=(15, 6))
 
-        # plt.xlim(0, 10)
+        self.ax1 = fig.add_subplot(2, 1, 1)
+        self.ax2 = fig.add_subplot(2, 1, 2)
+        ani = animation.FuncAnimation(fig, self.animate_plot, interval=100)
+        plt.autoscale(False)
+        ax[0].set_xticks([])
+        ax[0].set_yticks([])
+        ax[1].set_xticks([])
+        ax[1].set_yticks([])
+        self.ylim_min = self.best_bid_price_history[-1] * (1 - self.limdif)
+        self.ylim_max = self.best_ask_price_history[-1] * (1 + self.limdif)
+        self.ax1.set_ylim(self.ylim_min, self.ylim_max)
         plt.tight_layout()
         plt.show()
 
+    def print_monitor(self):
+        while True:
+            status = self.get_status().copy()
+
+            dt1 = datetime.now()
+            dt2 = n_tob._slot_position['BTCUSDT_SX3']['enter_dt']
+            if dt2:
+                c = dt1 - dt2
+                c = int(c.total_seconds())
+            else:
+                c = 0
+
+            income_value = n_tob._slot_position['BTCUSDT_SX3']['qty'] * n_tob._slot_position['BTCUSDT_SX3']['income_price']
+            exit_value = n_tob._slot_position['BTCUSDT_SX3']['qty'] * n_tob.actual_bid_price['BTCUSDT']
+            print(datetime.now(), 'Total_Position:', n_tob.total_symbol_position, exit_value - income_value, c),
+            print(status)
+
+            # pickle.dump(self.get_status(), open("paper_trade_multy_status.pickle", "wb"))
+            # print("\r lasr save:" + str(datetime.now()), end="")
+            time.sleep(5)
+
+    def moving_average(self, x, w):
+        iret = np.concatenate([np.array([x[0]] * (w - 1)), np.convolve(x, np.ones(w), 'valid') / w])
+        return iret
+
     def animate_plot(self, i):
-        y_ask = np.array(self.best_ask_price_history)
-        y_bid = np.array(self.best_bid_price_history)
 
-        if np.min(y_ask) > 0:
-            x = np.arange(0, y_ask.shape[0])
-            x = x.reshape((-1, 1))
+        # y_ask = np.array(self.best_ask_price_history)
+        # y_bid = np.array(self.best_bid_price_history)
 
-            degree = 8
-            polyreg = make_pipeline(PolynomialFeatures(degree), LinearRegression())
+        ma1 = 30
+        ma2 = 50
+        ma3 = 80
 
-            polyreg.fit(x, (y_bid + y_ask) / 2)
+        y_mid = (np.array(self.best_bid_price_history) + np.array(self.best_ask_price_history)) / 2
+        y_ma1 = self.moving_average(y_mid, ma1)
+        # y_ma2 = self.moving_average(y_mid, ma2)
+        y_ma3 = self.moving_average(y_mid, ma3)
 
-            xl = np.arange(0, y_bid.shape[0] + 10)
-            xl = xl.reshape((-1, 1))
+        # y_ask_qty = np.array(self.best_ask_qty_history)
+        # y_bid_qty = np.array(self.best_bid_qty_history)
 
-            y_poly = polyreg.predict(xl)
+        # if np.min(y_mid) > 0:
+        x = np.arange(0, y_mid.shape[0])
+        x = x.reshape((-1, 1))
 
-            self.ax1.clear()
-            self.ax1.set_ylim(self.ylim_min, self.ylim_max)
-            self.ax1.plot(x, y_ask)
-            self.ax1.plot(x, y_bid)
-            self.ax1.plot(xl, y_poly)
+        # degree = 12
+        # polyreg = make_pipeline(PolynomialFeatures(degree), LinearRegression())
+        #
+        # y_bid_rdc = y_bid[-500:]
+        # y_ask_rdc = y_ask[-500:]
+        # y_bid_qty_rdc = y_bid_qty[-500:]
+        # y_ask_qyt_rdc = y_ask_qty[-500:]
+        #
+        # x_rdc = np.arange(0, y_ask_rdc.shape[0])
+        # x_rdc = x_rdc.reshape((-1, 1))
+        #
+        # polyreg.fit(x_rdc, ((y_bid_rdc * y_bid_qty_rdc) + (y_ask_rdc * y_ask_qyt_rdc)) / 2)
+        # xl = np.arange(0, y_bid_rdc.shape[0] + 10)
+        # xl = xl.reshape((-1, 1))
+        #
+        # y_poly = polyreg.predict(xl)
+        #
+        # if y_poly[-1] > y_poly[-10]:
+        #     self.decision_history.pop(0)
+        #     self.decision_history.append(1)
+        # elif y_poly[-1] < y_poly[-10]:
+        #     self.decision_history.pop(0)
+        #     self.decision_history.append(-1)
 
+        self.ax1.clear()
+        self.ax2.clear()
+
+        self.ylim_min = y_mid[-1] * (1 - self.limdif)
+        self.ylim_max = y_mid[-1] * (1 + self.limdif)
+        self.ax1.plot(x, y_mid, linewidth=1)
+        self.ax1.plot(x, y_ma1, linewidth=1)
+        # self.ax1.plot(x, y_ma2, linewidth=2)
+        self.ax1.plot(x, y_ma3, linewidth=3)
+        self.ax1.set_ylim(self.ylim_min, self.ylim_max)
+        # print(self.ylim_min, self.ylim_max)
+        # self.ax1.plot(x, y_bid)
+        self.ax2.plot(x, self.decision_history)
+
+    def deal_hunter_thr(self):
+        ma1 = 20
+        ma2 = 50
+        ma3 = 80
+
+        while True:
+
+            y_mid = (np.array(self.best_bid_price_history) + np.array(self.best_ask_price_history)) / 2
+            # y_mid = y_mid[-(ma3 + 5):]
+            y_ma1 = self.moving_average(y_mid, ma1)
+            # y_ma2 = self.moving_average(y_mid, ma2)
+            y_ma3 = self.moving_average(y_mid, ma3)
+            # print((y_ma1[-1] , y_ma2[-1] , y_ma3[-1]))
+            # if (y_ma1[-1] > y_ma3[-1]) and \
+            #         (y_ma1[-5] > y_ma3[-5]) and \
+            #         (y_ma1[-10] > y_ma3[-10]) and \
+            #         (y_ma1[-25] < y_ma3[-25]) and \
+            #         (y_ma1[-95] < y_ma3[-95]) and \
+            #         (y_ma1[-195] < y_ma3[-195]) and \
+            #         (y_ma1[-355] < y_ma3[-355]) and \
+            #         not self.slot_in_position('BTCUSDT_SX3'):
+            if (y_ma1[-1] > y_ma3[-1]) and \
+                    (y_ma1[-10] > y_ma3[-10]) and np.min(y_ma3[-150:-20] - y_ma1[-150:-20]) > 0 and not self.slot_in_position('BTCUSDT_SX3'):
+
+                # print("BUY")
+                self.buy("BTCUSDT", 'BTCUSDT_SX3', 1)
+            # if self.slot_in_position('BTCUSDT_SX3') and (y_ma1[-1] < y_ma3[-1]) :
+            #     # print("CLOSE")
+            #     self.stop("BTCUSDT", 'BTCUSDT_SX3', "Stop: Deal Hunter")
+            time.sleep(1 / 300)
 
     def orderbook_thr(self):
         loop = asyncio.new_event_loop()
@@ -300,6 +404,7 @@ class TradeOrderBook:
         self._slot_position[slot]['symbol'] = symbol
         self._slot_position[slot]['qty'] = qty
         self._slot_position[slot]['income_price'] = self.actual_ask_price[symbol]
+        # print("income price:", self._slot_position[slot]['income_price'])
         self._slot_position[slot]['stop_price'] = self._slot_position[slot]['income_price'] * (1 - self.slot[slot]['stop_delta'])
         self._slot_position[slot]['trailer_stop_price'] = self._slot_position[slot]['income_price'] * (1 + self.slot[slot]['trailer_delta'])
         self._slot_position[slot]['trailer_minimum_price'] = self._slot_position[slot]['income_price'] * (1 + self.slot[slot]['trailer_delta'])
@@ -309,6 +414,8 @@ class TradeOrderBook:
         self._slot_position[slot]['extra_dt'] = self._slot_position[slot]['exit_dt'] + timedelta(seconds=self.slot[slot]['extra_time_sec'])
         self._slot_position[slot]['extra_flag'] = False
         self.total_symbol_position[symbol] += qty
+        self.decision_history.pop(0)
+        self.decision_history.append(1)
         # print("")
         # print("Buy", symbol, slot, qty, self.slot_position[slot]['income_price'], self.actual_ask_qty[symbol])
 
@@ -341,13 +448,13 @@ class TradeOrderBook:
         # print("Buy", symbol, slot, qty, self.slot_position[slot]['income_price'], self.actual_ask_qty[symbol])
 
     def stop(self, symbol, slot, message=""):
-        print(message)
+        # print(message)
         time.sleep(.01)
         income_value = self._slot_position[slot]['qty'] * self._slot_position[slot]['income_price']
         exit_value = self._slot_position[slot]['qty'] * self.actual_bid_price[symbol]
-        # print(income_value, exit_value)
+        # print("Exit price:", self.actual_bid_price[symbol])
         self.monitor_profit[slot] += (exit_value - income_value)
-        print("Close profit:", (exit_value - income_value))
+        # print("Close profit:", (exit_value - income_value))
         self.total_symbol_position[symbol] -= self._slot_position[slot]['qty']
         self._slot_position[slot]['symbol'] = ''
         self._slot_position[slot]['qty'] = 0
@@ -361,6 +468,8 @@ class TradeOrderBook:
         self._slot_position[slot]['extra_dt'] = None
         self._slot_position[slot]['extra_flag'] = False
         self.monitor_fee[slot] += round((income_value * 0.025 / 100) + (exit_value * 0.025 / 100), 2)
+        self.decision_history.pop(0)
+        self.decision_history.append(-1)
 
     def get_status(self):
 
@@ -393,7 +502,7 @@ class TradeOrderBook:
                            'monitor_fee': 'Fee',
                            }, inplace=True)
 
-        np.save("trailer_times", np.array(self.monitor_trailer_deal_times))
+        # np.save("trailer_times", np.array(self.monitor_trailer_deal_times))
         return df
 
     @staticmethod
@@ -633,79 +742,82 @@ class TradeOrderBook:
                 self.best_bid_price_history.pop(0)
                 self.best_bid_price_history.append(float(res['data']['b']))
 
-                self.best_bid_qty_history.pop(0)
-                self.best_bid_qty_history.append(float(res['data']['B']))
+                # self.best_bid_qty_history.pop(0)
+                # self.best_bid_qty_history.append(float(res['data']['B']))
 
                 self.best_ask_price_history.pop(0)
                 self.best_ask_price_history.append(float(res['data']['a']))
 
-                self.best_ask_qty_history.pop(0)
-                self.best_ask_qty_history.append(float(res['data']['A']))
+                # self.best_ask_qty_history.pop(0)
+                # self.best_ask_qty_history.append(float(res['data']['A']))
 
-                self.traded_price_history.pop(0)
-                self.traded_price_history.append(self.last_traded_price)
+                # self.traded_price_history.pop(0)
+                # self.traded_price_history.append(self.last_traded_price)
+
+                self.decision_history.pop(0)
+                self.decision_history.append(0)
 
 
     # @njit
-    def show_poly(self, y_bid, y_ask, y_bid_qty, y_ask_qty, y_traded_price):
-        return
-        y_bid = np.array(y_bid)
-        y_ask = np.array(y_ask)
-        y_bid_qty = np.array(y_bid_qty)
-        y_ask_qty = np.array(y_ask_qty)
-        y_traded_price = np.array(y_traded_price)
-
-        x = np.arange(0, y_bid.shape[0])
-        x = x.reshape((-1, 1))
-
-        # regr1 = linear_model.LinearRegression()
-        # regr1.fit(x, y)
-        # yp1 = regr1.predict(x)
-
-        # regr2 = linear_model.TheilSenRegressor()
-        # regr2.fit(x, y)
-        # yp2 = regr2.predict(x)
-
-        degree = 8
-        polyreg = make_pipeline(PolynomialFeatures(degree), LinearRegression())
-
-        polyreg.fit(x, (y_bid + y_ask) / 2)
-
-        xl = np.arange(0, y_bid.shape[0] + 10)
-        xl = xl.reshape((-1, 1))
-
-        yp3 = polyreg.predict(xl)
-
-        # y_price_diff = (y_ask / y_bid)
-        # y_qty_diff = (y_ask_qty / y_bid_qty)
-        # y_diff[y_diff > .5] = 0
-        base_price = y_bid[0] - 10
-
-        # y_price_diff += base_price
-        # y_qty_diff += base_price + 5
-
-        y_bid_qty += base_price + 10
-        y_ask_qty += base_price + 15
-
-        # y_pq = (y_price_diff * y_qty_diff) / base_price
-        # y_pq[y_pq > base_price * 1.002] = base_price
-
-        # print(y_price_diff)
-
-        fig = plt.figure(figsize=(15, 8))
-        plt.plot(xl, yp3)
-        plt.plot(x, y_bid)
-        plt.plot(x, y_ask)
-        plt.plot(x, y_traded_price)
-        # plt.plot(x, y_pq)
-        # plt.plot(x, y_ask_qty)
-        # plt.plot(x, y_price_diff)
-        # plt.plot(x, y_qty_diff)
-        # plt.plot(x, yp1)
-        # plt.plot(x, yp2)
-
-        plt.tight_layout()
-        plt.show()
+    # def show_poly(self, y_bid, y_ask, y_bid_qty, y_ask_qty, y_traded_price):
+    #     return
+    #     y_bid = np.array(y_bid)
+    #     y_ask = np.array(y_ask)
+    #     y_bid_qty = np.array(y_bid_qty)
+    #     y_ask_qty = np.array(y_ask_qty)
+    #     y_traded_price = np.array(y_traded_price)
+    #
+    #     x = np.arange(0, y_bid.shape[0])
+    #     x = x.reshape((-1, 1))
+    #
+    #     # regr1 = linear_model.LinearRegression()
+    #     # regr1.fit(x, y)
+    #     # yp1 = regr1.predict(x)
+    #
+    #     # regr2 = linear_model.TheilSenRegressor()
+    #     # regr2.fit(x, y)
+    #     # yp2 = regr2.predict(x)
+    #
+    #     degree = 8
+    #     polyreg = make_pipeline(PolynomialFeatures(degree), LinearRegression())
+    #
+    #     polyreg.fit(x, (y_bid + y_ask) / 2)
+    #
+    #     xl = np.arange(0, y_bid.shape[0] + 10)
+    #     xl = xl.reshape((-1, 1))
+    #
+    #     yp3 = polyreg.predict(xl)
+    #
+    #     # y_price_diff = (y_ask / y_bid)
+    #     # y_qty_diff = (y_ask_qty / y_bid_qty)
+    #     # y_diff[y_diff > .5] = 0
+    #     base_price = y_bid[0] - 10
+    #
+    #     # y_price_diff += base_price
+    #     # y_qty_diff += base_price + 5
+    #
+    #     y_bid_qty += base_price + 10
+    #     y_ask_qty += base_price + 15
+    #
+    #     # y_pq = (y_price_diff * y_qty_diff) / base_price
+    #     # y_pq[y_pq > base_price * 1.002] = base_price
+    #
+    #     # print(y_price_diff)
+    #
+    #     fig = plt.figure(figsize=(15, 8))
+    #     plt.plot(xl, yp3)
+    #     plt.plot(x, y_bid)
+    #     plt.plot(x, y_ask)
+    #     plt.plot(x, y_traded_price)
+    #     # plt.plot(x, y_pq)
+    #     # plt.plot(x, y_ask_qty)
+    #     # plt.plot(x, y_price_diff)
+    #     # plt.plot(x, y_qty_diff)
+    #     # plt.plot(x, yp1)
+    #     # plt.plot(x, yp2)
+    #
+    #     plt.tight_layout()
+    #     plt.show()
 
     async def asyc_websocket_bookticker(self):
         i_socket_list = []
@@ -819,8 +931,10 @@ class TradeOrderBook:
             y_predict = np.argmax(y_result, axis=1)
             y_filter = self.slot[slot]['y_filter']
 
-            # if y_predict[0] == 1 and y_result[0][1] > y_filter and not self.slot_in_position(slot) and self.trend == "UP":
-            if self.trend == "UP":
+            if y_predict[0] == 1 and y_result[0][1] > y_filter and not self.slot_in_position(slot):
+            # if self.trend == "UP":
+                self.decision_history.pop(0)
+                self.decision_history.append(1)
                 self.buy(symbol, slot, 1)
 
     def get_x_3d(self, orderbooks, base_prices, x_type=3, qmin=-50, qmax=50, qstep=.5, depth=3):
@@ -1047,25 +1161,5 @@ class TradeOrderBook:
 if __name__ == '__main__':
     n_tob = TradeOrderBook()
     n_tob.strat_threads()
+    print(":)")
 
-    while True:
-        status = n_tob.get_status().copy()
-
-        dt1 = datetime.now()
-        dt2 = n_tob._slot_position['BTCUSDT_SX3']['enter_dt']
-        if dt2:
-            c = dt1 - dt2
-            c = int(c.total_seconds())
-        else:
-            c = 0
-
-        income_value = n_tob._slot_position['BTCUSDT_SX3']['qty'] * n_tob._slot_position['BTCUSDT_SX3']['income_price']
-        exit_value = n_tob._slot_position['BTCUSDT_SX3']['qty'] * n_tob.actual_bid_price['BTCUSDT']
-        print(datetime.now(), 'Total_Position:', n_tob.total_symbol_position, exit_value - income_value, c),
-        print(status)
-
-        # pickle.dump(self.get_status(), open("paper_trade_multy_status.pickle", "wb"))
-        # print("\r lasr save:" + str(datetime.now()), end="")
-        time.sleep(5)
-
-    
