@@ -8,4 +8,4 @@ os.system("pip install python-binance")
 os.system("pip install tensorflow")
 os.system("pip install pandas")
 os.system("pip install -U scikit-learn")
-
+os.system("pip install scipy")
