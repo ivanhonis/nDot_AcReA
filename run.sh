@@ -12,4 +12,4 @@ echo --------------------------------------
 echo Run: free_paper_trade.py
 echo --------------------------------------
 
-nohup python3 free_paper_trade.py > output.log &
+nohup python3 acrea.py > output.log &
