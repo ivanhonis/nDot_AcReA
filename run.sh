@@ -9,7 +9,7 @@ for KILLPID in `ps ax | grep 'python3' | awk ' { print $1;}'`; do
 done
 
 echo --------------------------------------
-echo Run: free_paper_trade.py
+echo Run: acrea.py
 echo --------------------------------------
 
 nohup python3 acrea.py > output.log &

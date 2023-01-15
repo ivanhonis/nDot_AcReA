@@ -27,8 +27,8 @@ class LOBMonitor:
     def __init__(self):
         self.tc = n_trade_server_connection()
 
-        self.server = 1
-        if self.server == 2:
+        self.server = 2
+        if self.server == 1:
             self.sever_name = "LOB"
             self.tc.password = '3+oNQ6Wn%}6@6d4#'
             self.tc.hostname = '45.77.9.99'
