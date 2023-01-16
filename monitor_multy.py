@@ -1,3 +1,5 @@
+from n_trade_server_connection import n_trade_server_connection
+
 import os
 import sys
 import time
@@ -11,6 +13,7 @@ import seaborn as sns
 from scipy.signal import savgol_filter
 import asyncio
 from threading import Thread
+# import numba
 
 np.set_printoptions(threshold=5000)
 pd.set_option('display.max_rows', None)
@@ -18,8 +21,6 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 2000)
 pd.set_option('display.float_format', '{:8,.4f}'.format)
 pd.set_option('display.max_colwidth', None)
-from n_trade_server_connection import n_trade_server_connection
-
 
 
 class LOBMonitor:

@@ -1,13 +1,17 @@
-import multiprocessing
 import sys
 import time
 import pickle
 from datetime import datetime, timedelta
+
+from numba import int32, float32
+from numba.experimental import jitclass
+from numba import njit, objmode, void
+import numba
 # import psutil
 
 import asyncio
 from threading import Thread
-from multiprocessing import shared_memory, Lock, cpu_count, Process, Array
+from multiprocessing import cpu_count, Process, Array
 
 import numpy as np
 from scipy.signal import savgol_filter
@@ -22,13 +26,102 @@ from binance import AsyncClient, BinanceSocketManager, Client
 # from sklearn.linear_model import LinearRegression
 
 np.set_printoptions(threshold=5000)
-lock = Lock()
+
+spec = [
+    ('request_limit_sec', int32),
+    ('request_limit_action', int32),
+    ('order_limit_1_sec', int32),
+    ('order_limit_1_action', int32),
+    ('order_limit_2_action', int32),
+    ('count_block_action', int32),
+    ('request_reg', int32[:]),
+    ('request_reg_yesterday', int32[:]),
+    ('order_reg', int32[:]),
+    ('order_reg_yesterday', int32[:]),
+]
+
+
+@jitclass(spec)
+class BinanceActionLimit:
+
+    def __init__(self):
+        self.request_reg = np.array([0] * 86400, dtype=np.int32)
+        self.request_reg_yesterday = np.array([0] * 86400, dtype=np.int32)
+        self.order_reg = np.array([0] * 86400, dtype=np.int32)
+        self.order_reg_yesterday = np.array([0] * 86400, dtype=np.int32)
+        self.request_limit_sec = 60
+        self.request_limit_action = 1200 - 1
+        self.order_limit_1_sec = 10
+        self.order_limit_1_action = 50 - 1
+        self.order_limit_2_action = 160000 - 1
+        self.count_block_action = 0
+        # a limitet csak vételkor ellenőrzöm, eladni minden képen lehet, azért a lmitáló 1-el kevesebb
+        # vételt enged, hogy egy eladásra mindenképen maradjon lehetőség
+
+    @staticmethod
+    def sma(a, p):
+        m = np.cumsum(a) / p
+        m[p:] = m[p:] - m[:-p]  # Odd behavior of -= in Numba
+        # m[:p - 1] = np.nan
+        m = m[p:]
+        return m
+
+    def reg_request_action(self, sec):
+        self.request_reg[sec] += 1
+
+    def get_max_request(self):
+        return int(np.max(self.sma(self.request_reg, self.request_limit_sec)) * self.request_limit_sec)
+
+    def get_max_order(self):
+        return int(np.max(self.sma(self.order_reg, self.order_limit_1_sec)) * self.order_limit_1_sec)
+
+    def get_sum_orders24(self, sec):
+        return np.sum(self.order_reg[0:sec + 1]) + np.sum(self.order_reg_yesterday[86400 - (86400 - sec):-1])
+
+    def reg_order_action(self, sec):
+        self.order_reg[sec] += 1
+        self.request_reg[sec] += 1
+
+    def shift_day(self):
+        self.order_reg_yesterday = self.order_reg.copy()
+        self.order_reg = np.array([0] * 86400, dtype=np.int32)
+
+        self.request_reg_yesterday = self.request_reg.copy()
+        self.request_reg = np.array([0] * 86400, dtype=np.int32)
+
+    def get_blocked_actions(self):
+        return self.count_block_action
+
+    def is_action_limit_ok(self, sec):
+        back_request_limit_sec = sec - self.request_limit_sec
+        back_order_limit_1_sec = sec - self.order_limit_1_sec
+        # biztonság kedvéért az aktuális másodpercet is beleszámolom
+        # ezért ez több mint 10 de kevesebb mint 11 másodperc
+        if back_request_limit_sec < 0:
+            requests = np.sum(self.request_reg[0:sec + 1]) + np.sum(self.request_reg[back_request_limit_sec:])
+        else:
+            requests = np.sum(self.request_reg[back_request_limit_sec:sec + 1])
+
+        if back_order_limit_1_sec < 0:
+            orders_1 = np.sum(self.order_reg[0:sec + 1]) + np.sum(self.order_reg[back_order_limit_1_sec:])
+        else:
+            orders_1 = np.sum(self.order_reg[back_order_limit_1_sec:sec + 1])
+
+        orders_2 = np.sum(self.order_reg[0:sec + 1]) + np.sum(self.order_reg_yesterday[86400-(86400-sec):-1])
+
+        if requests <= self.request_limit_action and orders_1 <= self.order_limit_1_action and orders_2 <= self.order_limit_2_action:
+            return True
+        else:
+            self.count_block_action += 1
+            return False
 
 
 class AcReA:
 
     def __init__(self, param):
-        self.requests_sec_array = param['requests_sec_array']
+        self.binance_action_limit = param['binance_action_limit']
+        self.bal = BinanceActionLimit()
+
         self.process = param['process']
         self.cores = param['cores']
         self.mpi = str(self.process) + "/" + str(self.cores) + " core ->"
@@ -296,10 +389,19 @@ class AcReA:
         loop.run_until_complete(self.async_websocket_bookticker_detect())
         loop.close()
 
-    def set_request(self):
+    def reg_order(self):
         t = datetime.now().time()
-        seconds = (t.hour * 60 + t.minute) * 60 + t.second
-        self.requests_sec_array[seconds] += 1
+        sec = (t.hour * 60 + t.minute) * 60 + t.second
+        self.bal.reg_order_action(sec)
+        self.binance_action_limit[0] = self.bal.get_blocked_actions()
+        self.binance_action_limit[1] = self.bal.get_sum_orders24(sec)
+        self.binance_action_limit[2] = self.bal.get_max_order()
+        self.binance_action_limit[3] = self.bal.get_max_request()
+
+    def is_action_limit_ok(self):
+        t = datetime.now().time()
+        sec = (t.hour * 60 + t.minute) * 60 + t.second
+        return self.bal.is_action_limit_ok(sec)
 
     def buy(self):
         if self.slot_position['qty'] > 0 and self.slot_position['last_buy_price'] < self.actual_ask_price:
@@ -311,7 +413,7 @@ class AcReA:
         calc_qty = round(self.actual_buy_qty_base, 4)
         calc_qty = np.min([max_buy_base, calc_qty])
 
-        if not self.qty_rise_flag and calc_qty >= self.minimum_buy_qty_base:
+        if not self.qty_rise_flag and calc_qty >= self.minimum_buy_qty_base and self.is_action_limit_ok():
 
             existed_value = self.slot_position['income_price'] * self.slot_position['qty']
             new_value = calc_qty * ask_price_fixed
@@ -344,7 +446,7 @@ class AcReA:
 
             self.set_slot_position_array()
 
-            self.set_request()
+            self.reg_order()
 
             self.qty_rise_flag = True
         else:
@@ -384,7 +486,7 @@ class AcReA:
         self.actual_buy_qty_base = self.start_buy_qty_base
         self.set_profile(1, direct=True)
         self.set_slot_position_array()
-        self.set_request()
+        self.reg_order()
         self.qty_rise_flag = False
 
     def allowed_buy_again(self):
@@ -722,7 +824,7 @@ class Monitor:
     def __init__(self, param):
         self.status_array = param['status_array']
         self.slot_position_array = param['slot_position_array']
-        self.requests_sec_array = param['requests_sec_array']
+        self.binance_action_limit = param['binance_action_limit']
         self.process = param['process']
         self.cores = param['cores']
         self.mpi = str(self.process) + "/" + str(self.cores) + " core ->"
@@ -760,10 +862,10 @@ class Monitor:
             print(slot_position_dict)
             print(status_array_dict)
 
-            print("request / minute (limit 1200):", np.max(self.moving_average(self.requests_sec_array, 60)) * 60 )
-            print("request / 10 sec (limit 50):", np.max(self.moving_average(self.requests_sec_array, 10)) * 10)
-            print("24 hours limit(160 000):", np.sum(self.requests_sec_array))
-
+            print("    get_blocked_actions total", self.binance_action_limit[0])
+            print("get_sum_orders24 160000 / 24h", self.binance_action_limit[1])
+            print("     get_max_order 50 / 10sec", self.binance_action_limit[2])
+            print(" get_max_request 1200 / 60sec", self.binance_action_limit[3])
             time.sleep(3)
 
 
@@ -777,7 +879,7 @@ if __name__ == '__main__':
 
     status_array = Array('f', [0.0] * 9)
     slot_position_array = Array('f', [0.0] * 10)
-    requests_sec_array = Array('i', [0] * 86400)
+    binance_action_limit = Array('i', [0] * 4)
 
     n_acrea = AcReA
     n_monitor = Monitor
@@ -787,12 +889,12 @@ if __name__ == '__main__':
               'base': "BTC",
               'quote': "USDT",
               'max_invest_quote': 750 * 3,
-              'minimum_buy_qty_base': 0.0002,
-              'buy_multiplier': 1.1,
+              'minimum_buy_qty_base': 0.0005,
+              'buy_multiplier': 1.2,
               'trade_profile_limits': [.1, .3],
               'status_array': status_array,
               'slot_position_array': slot_position_array,
-              'requests_sec_array': requests_sec_array,
+              'binance_action_limit': binance_action_limit,
               }
 
     process1 = Process(target=n_acrea, args=(params,))
@@ -802,13 +904,9 @@ if __name__ == '__main__':
                'process': 2,
                'base': "BTC",
                'quote': "USDT",
-               'max_invest_quote': 750 * 3,
-               'minimum_buy_qty_base': 0.0002,
-               'buy_multiplier': 1.1,
-               'trade_profile_limits': [.1, .3],
                'status_array': status_array,
                'slot_position_array': slot_position_array,
-               'requests_sec_array': requests_sec_array,
+               'binance_action_limit': binance_action_limit,
                }
 
     process2 = Process(target=n_monitor, args=(params2,))
