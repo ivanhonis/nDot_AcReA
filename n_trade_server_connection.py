@@ -22,7 +22,12 @@ class n_trade_server_connection:
     def open_connect(self):
         self.log(f"Login. nDot_trade_server: {self.hostname}")
         self.transport = paramiko.Transport((self.hostname, self.ports))
+        self.transport.default_window_size = 4294967294  # 2147483647
+        self.transport.packetizer.REKEY_BYTES = pow(2, 40)
+        self.transport.packetizer.REKEY_PACKETS = pow(2, 40)
         self.transport.connect(username=self.username, password=self.password)
+
+        # self.transport.window_size = 3 * 1024 * 1024
         self.sftp = paramiko.SFTPClient.from_transport(self.transport)
 
     def close_connect(self):
@@ -39,6 +44,7 @@ class n_trade_server_connection:
     def get(self, remotepath, localpath):
         try:
             self.sftp.get(remotepath=remotepath, localpath=localpath)
+
         except BaseException as error:
             print(f'n_trade_server_connection -> get exception: {error}')
 

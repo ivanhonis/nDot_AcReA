@@ -27,11 +27,11 @@ class LOBMonitor:
     def __init__(self):
         self.tc = n_trade_server_connection()
 
-        self.server = 2
+        self.server = 1
         if self.server == 1:
-            self.sever_name = "LOB"
-            self.tc.password = '3+oNQ6Wn%}6@6d4#'
-            self.tc.hostname = '45.77.9.99'
+            self.sever_name = "AcReA"
+            self.tc.password = '2jQ._n]?}+C=-kAs'
+            self.tc.hostname = '108.61.200.183'
         else:
             self.sever_name = "LOB2"
             self.tc.password = '6.Zz_.c[y9!PPydr'
@@ -39,38 +39,35 @@ class LOBMonitor:
 
         self.zoom_part = -3000
         self.time_period = 20000
+
         self.best_bid_price_history = np.array([0.0] * self.time_period)
-        self.last_best_bid_price_history = 0
         self.best_ask_price_history = np.array([0.0] * self.time_period)
-        self.bid_ask_spread = np.array([0.0] * self.time_period)
-        self.bid_ask_spread_avg = np.array([0.0] * self.time_period)
-        self.best_mid_price_history = np.array([0.0] * self.time_period)
-        self.best_mid_price_history_ma_fast = np.array([0.0] * self.time_period)
-        self.best_mid_price_history_ma_slow = np.array([0.0] * self.time_period)
-        self.smoot_price_history = np.array([0.0] * self.time_period)
-        self.best_smoot2_price_history = np.array([0.0] * self.time_period)
-        self.best_smoot3_price_history = np.array([0.0] * self.time_period)
-        self.best_bid_qty_history = np.array([0.0] * self.time_period)
-        self.best_ask_qty_history = np.array([0.0] * self.time_period)
-        # self.qty_way_history = np.array([0.0] * self.time_period)
-        self.traded_price_history = [0.0] * self.time_period
-        self.decision_neutral = 0
-        self.decision_history = [self.decision_neutral] * self.time_period
-        self.market_speed_array = np.array([0.0] * self.time_period)
-        self.market_speed_array_avg = np.array([0.0] * self.time_period)
-        self.market_speed_stamp = datetime.now()
-        self.market_speed = 2
+        self.renko_slow_price_history = np.array([0.0] * self.time_period)
+        self.renko_fast_price_history = np.array([0.0] * self.time_period)
+        self.renko_stop_price_history = np.array([0.0] * self.time_period)
+        self.smoot_slow_price_history = np.array([0.0] * self.time_period)
+        self.smoot_fast_price_history = np.array([0.0] * self.time_period)
+        self.decision_history = np.array([0.0] * self.time_period)
+
+        self.last_best_bid_price_history = 0.0
+
+        self.binance_action_limit = {}
+        self.trade_time = {}
+        self.slot_position = {}
+        self.status = {}
+
         self.ready_to_plot = False
-        self.transfer_position = {}
-        self.transfer_statistics = {}
+        # self.transfer_position = {}
+        # self.transfer_statistics = {}
+
 
         # plot
         self.ylim_max = 0
         self.ylim_min = 0
-        self.xaxis = np.arange(0, self.best_mid_price_history.shape[0])
+        self.xaxis = np.arange(0, self.time_period)
         self.xaxis = self.xaxis.reshape((-1, 1))
         self.xaxis_zoom = np.arange(0, abs(self.zoom_part))
-        self.xaxis_zomm = self.xaxis_zoom.reshape((-1, 1))
+        self.xaxis_zoom = self.xaxis_zoom.reshape((-1, 1))
 
         self.trend = ""
         self.last_traded_price = 0
@@ -81,7 +78,6 @@ class LOBMonitor:
         # self.build_ai()
 
     def strat_threads(self):
-        self.tc.open_connect()
         task1 = Thread(target=self.data_transfer, args=[])
         task1.start()
 
@@ -138,69 +134,102 @@ class LOBMonitor:
         plt.show()
 
     def data_transfer(self):
+        self.tc.open_connect()
         while True:
             if not self.ready_to_plot:
                 self.tc.get("/root/transfer_timeseries.npy", "./monitor_data/transfer_timeseries.npy")
-                self.tc.get("/root/transfer_position.pkl", "./monitor_data/transfer_position.pkl")
-                self.tc.get("/root/transfer_statistics.pkl", "./monitor_data/transfer_statistics.pkl")
+                self.tc.get("/root/transfer_sh_slot_position_array.npy", "./monitor_data/transfer_sh_slot_position_array.npy")
+                self.tc.get("/root/transfer_sh_trade_time.npy", "./monitor_data/transfer_sh_trade_time.npy")
+                self.tc.get("/root/transfer_sh_status_array.npy", "./monitor_data/transfer_sh_status_array.npy")
+                self.tc.get("/root/transfer_sh_binance_action_limit.npy", "./monitor_data/transfer_sh_binance_action_limit.npy")
                 try:
-                    trsf = np.load("./monitor_data/transfer_timeseries.npy")
+                    transfer = np.load("./monitor_data/transfer_timeseries.npy")
 
-                    self.best_bid_price_history = trsf[0]
-                    self.best_ask_price_history = trsf[1]
-                    self.smoot_price_history = trsf[2]
-                    self.decision_history = trsf[3]
-                    # self.market_speed_array_avg = trsf[4]
-                    # self.market_speed_array = trsf[5]
-                    # self.bid_ask_spread_avg = trsf[6]
-                    # self.bid_ask_spread = trsf[7]
-                    # self.best_ask_qty_history = trsf[8]
-                    # self.best_bid_qty_history = trsf[9]
-                    self.smoot_fast_price_history = trsf[10]
+                    self.best_bid_price_history[:] = transfer[0][:]
+                    self.best_ask_price_history[:] = transfer[1][:]
+                    self.renko_slow_price_history[:] = transfer[2][:]
+                    self.renko_fast_price_history[:] = transfer[3][:]
+                    self.renko_stop_price_history[:] = transfer[4][:]
+                    self.smoot_slow_price_history[:] = transfer[5][:]
+                    self.smoot_fast_price_history[:] = transfer[6][:]
+                    self.decision_history[:] = transfer[7][:]
 
-                    with open('./monitor_data/transfer_position.pkl', 'rb') as handle:
-                        self.transfer_position = pickle.load(handle)
-                        self.transfer_position = self.transfer_position['BTCUSDT_SX3']
+                    binance_action_limit_array = np.load("./monitor_data/transfer_sh_binance_action_limit.npy")
 
-                    with open('./monitor_data/transfer_statistics.pkl', 'rb') as handle:
-                        self.transfer_statistics = pickle.load(handle)
+                    self.binance_action_limit = {
+                        "blocked_actions": binance_action_limit_array[0],
+                        "sum_orders24": binance_action_limit_array[1],
+                        "max_order": binance_action_limit_array[2],
+                        "max_request": binance_action_limit_array[3],
+                    }
+
+                    trade_time_array = np.load("./monitor_data/transfer_sh_trade_time.npy")
+
+                    self.trade_time = {
+                        "trade_time_min": np.min(trade_time_array),
+                        "trade_time_max": np.max(trade_time_array),
+                        "trade_time_mean": np.mean(trade_time_array),
+                    }
+
+                    slot_position_array = np.load("./monitor_data/transfer_sh_slot_position_array.npy")
+
+                    self.slot_position = {
+                        "qty": slot_position_array[0],
+                        "income_price": slot_position_array[1],
+                        "free_invest_quote": slot_position_array[2],
+                        "stop_price": slot_position_array[3],
+                        "trailer_stop_price": slot_position_array[4],
+                        "trailer_minimum_price": slot_position_array[5],
+                        "take_price": slot_position_array[6],
+                        "actual_value": slot_position_array[7],
+                        "actual_profile": slot_position_array[8],
+                        "last_buy_price": slot_position_array[9],
+                    }
+
+                    status_array = np.load("./monitor_data/transfer_sh_status_array.npy")
+
+                    self.status = {
+                        "stop": status_array[0],
+                        "buy_again": status_array[1],
+                        "take": status_array[2],
+                        "trailer": status_array[3],
+                        "time": status_array[4],
+                        "profit": status_array[5],
+                        "turnover": status_array[6],
+                        "max_qty": status_array[7],
+                        "min_value": status_array[8],
+                    }
 
                     self.ready_to_plot = True
                 except:
                     pass
             time.sleep(7)
 
-    def get_satistics_str(self, status):
-        def r(v):
-            return round(v, 4)
-
-        monitor_stop = int(status['monitor_stop']['BTCUSDT_SX3'])
-        monitor_take = int(status['monitor_take']['BTCUSDT_SX3'])
-        monitor_trailer = int(status['monitor_trailer']['BTCUSDT_SX3'])
-        monitor_re_buy = int(status['monitor_re_buy']['BTCUSDT_SX3'])
-        monitor_time = int(status['monitor_time']['BTCUSDT_SX3'])
-        monitor_profit = status['monitor_profit']['BTCUSDT_SX3']
-        monitor_fee = status['monitor_fee']['BTCUSDT_SX3']
-        monitor_max_qty = status['monitor_max_qty']['BTCUSDT_SX3']
-        monitor_min_value = status['monitor_min_value']['BTCUSDT_SX3']
-        r_str = f"Stop:{monitor_stop}   Take:{monitor_take}   Stop:{monitor_stop}   Trailer:{monitor_trailer}  " \
-              f"Re_buy:{monitor_re_buy}   Time:{monitor_time}   Profit:{r(monitor_profit)} USD     " \
-              f"Fee:{r(monitor_fee)} USD      Max.qty:{r(monitor_max_qty)} BTC      Min.value:{r(monitor_min_value)} USD"
+    def get_satistics_str(self):
+        monitor_stop = int(self.status['stop'])
+        monitor_take = int(self.status['take'])
+        monitor_trailer = int(self.status['trailer'])
+        monitor_buy_again = int(self.status['buy_again'])
+        monitor_time = int(self.status['time'])
+        monitor_profit = round(float(self.status['profit']), 2)
+        monitor_turnover = round(float(self.status['turnover']), 2)
+        monitor_max_qty = round(float(self.status['max_qty']), 2)
+        monitor_min_value = round(float(self.status['min_value']), 2)
+        r_str = f"Take:{monitor_take}   Stop:{monitor_stop}   Trailer:{monitor_trailer}  " \
+                f"Buy_again:{monitor_buy_again}   Time:{monitor_time}   Profit:{monitor_profit} USD     " \
+                f"Turn_over:{monitor_turnover} USD      Max.qty:{monitor_max_qty} BTC      Min.value:{monitor_min_value} USD"
         return r_str
 
     def get_title_str(self):
-        def r(v):
-            return round(v, 4)
 
-        symbol = self.transfer_position['symbol']
-        qty = round(self.transfer_position['qty'], 8)
-        income_price = round(self.transfer_position['income_price'], 4)
-        stop_price = round(self.transfer_position['stop_price'], 4)
-        actual_value = round(self.transfer_position['actual_value'], 4)
-        actual_profile = self.transfer_position['actual_profile']
+        qty = round(self.slot_position['qty'], 8)
+        free_invest_quote = round(self.slot_position['free_invest_quote'], 4)
+        actual_value = round(self.slot_position['actual_value'], 4)
+        actual_profile = round(self.slot_position['actual_profile'], 4)
+        last_buy_price = self.slot_position['last_buy_price']
 
-        r_str = f"{self.sever_name}        Actual position:      Symbol:{symbol}   qty:{qty} BTC     income_price:{income_price} USD     " \
-                f"stop_price:{stop_price} USD     actual_value{actual_value} USD    actual_profile{actual_profile} "
+        r_str = f"{self.sever_name}        Actual position:      qty:{qty} BTC     free_invest:{free_invest_quote} USD     " \
+                f"actual_value{actual_value} USD     last_buy_price:{last_buy_price} USD     actual_profile{actual_profile} "
         return r_str
 
     def animate_plot(self, i):
@@ -220,10 +249,10 @@ class LOBMonitor:
             self.ax11.xaxis.set_ticks(np.arange(0, self.time_period, 500))
             self.ax11.set_facecolor('#efefef')
 
-            self.ax11.plot(self.xaxis, self.smoot_price_history, 'k-', linewidth=2)
-            self.ax11.plot(self.xaxis, self.smoot_fast_price_history, 'k--', linewidth=1)
-            self.ax11.plot(self.xaxis, self.best_ask_price_history, 'b-', alpha=0.6, linewidth=1)
-            self.ax11.plot(self.xaxis, self.best_bid_price_history, 'r-', alpha=0.6, linewidth=1, )
+            self.ax11.plot(self.xaxis, self.smoot_slow_price_history[:], 'k-', linewidth=2)
+            self.ax11.plot(self.xaxis, self.smoot_fast_price_history[:], 'k--', linewidth=1)
+            self.ax11.plot(self.xaxis, self.best_ask_price_history[:], 'b-', alpha=0.6, linewidth=1)
+            self.ax11.plot(self.xaxis, self.best_bid_price_history[:], 'r-', alpha=0.6, linewidth=1, )
             # if self.transfer_status['income_price'] != 0:
             #     self.ax11.plot(self.xaxis, np.full(self.time_period, self.transfer_status['income_price_short']), 'b-', alpha=1, linewidth=2, )
             #     self.ax11.plot(self.xaxis, np.full(self.time_period, self.transfer_status['stop_price']), 'r-', alpha=1, linewidth=2, )
@@ -237,12 +266,12 @@ class LOBMonitor:
 
             self.ax12.clear()
             self.ax12.margins(x=0)
-            if self.transfer_position['income_price'] != 0:
-                self.ylim_min = np.min(self.best_bid_price_history[self.zoom_part:][self.best_bid_price_history[self.zoom_part:] > 0]) - .5
-                self.ylim_max = np.max(self.best_ask_price_history[self.zoom_part:][self.best_ask_price_history[self.zoom_part:] > 0]) + .5
+            if self.slot_position['income_price'] != 0:
+                self.ylim_min = np.min(self.best_bid_price_history[:][self.zoom_part:][self.best_bid_price_history[:][self.zoom_part:] > 0]) - .5
+                self.ylim_max = np.max(self.best_ask_price_history[:][self.zoom_part:][self.best_ask_price_history[:][self.zoom_part:] > 0]) + .5
 
-                self.ylim_min = np.min([self.ylim_min, self.transfer_position['stop_price']]) - .5
-                self.ylim_max = np.max([self.ylim_max, self.transfer_position['take_price']]) + .5
+                self.ylim_min = np.min([self.ylim_min, self.slot_position['stop_price']]) - .5
+                self.ylim_max = np.max([self.ylim_max, self.slot_position['take_price']]) + .5
             else:
                 self.ylim_min = np.min(self.best_bid_price_history[self.zoom_part:][self.best_bid_price_history[self.zoom_part:] > 0]) - .5
                 self.ylim_max = np.max(self.best_ask_price_history[self.zoom_part:][self.best_ask_price_history[self.zoom_part:] > 0]) + .5
@@ -251,16 +280,16 @@ class LOBMonitor:
             self.ax12.ticklabel_format(axis='y', style='sci', useOffset=False)
             self.ax12.xaxis.set_ticks(np.arange(0, abs(self.zoom_part), 500))
 
-            self.ax12.plot(self.xaxis_zoom, self.smoot_price_history[self.zoom_part:], 'k-', linewidth=2)
+            self.ax12.plot(self.xaxis_zoom, self.smoot_slow_price_history[self.zoom_part:], 'k-', linewidth=2)
             self.ax12.plot(self.xaxis_zoom, self.smoot_fast_price_history[self.zoom_part:], 'k--', linewidth=1)
             self.ax12.plot(self.xaxis_zoom, self.best_ask_price_history[self.zoom_part:], 'b-', alpha=0.6, linewidth=1)
             self.ax12.plot(self.xaxis_zoom, self.best_bid_price_history[self.zoom_part:], 'r-', alpha=0.6, linewidth=1, )
-            if self.transfer_position['income_price'] != 0:
-                self.ax12.plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.transfer_position['income_price']), 'b-', alpha=1, linewidth=2, )
-                self.ax12.plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.transfer_position['stop_price']), 'r-', alpha=1, linewidth=2, )
-                self.ax12.plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.transfer_position['trailer_stop_price']), 'y--', alpha=1, linewidth=2, )
-                self.ax12.plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.transfer_position['trailer_minimum_price']), 'c--', alpha=1, linewidth=2, )
-                self.ax12.plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.transfer_position['take_price']), 'y-', alpha=1, linewidth=2, )
+            if self.slot_position['income_price'] != 0:
+                self.ax12.plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.slot_position['income_price']), 'b-', alpha=1, linewidth=2, )
+                self.ax12.plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.slot_position['stop_price']), 'r-', alpha=1, linewidth=2, )
+                self.ax12.plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.slot_position['trailer_stop_price']), 'y--', alpha=1, linewidth=2, )
+                self.ax12.plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.slot_position['trailer_minimum_price']), 'c--', alpha=1, linewidth=2, )
+                self.ax12.plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.slot_position['take_price']), 'y-', alpha=1, linewidth=2, )
 
             self.ax12.legend(['rs slow', 'rs fast', 'ask', 'bid'], loc=2)
 
@@ -317,7 +346,7 @@ class LOBMonitor:
             # self.ax14.set_ylim(100, 800)
             self.ax14.get_yaxis().set_ticks([])
             # self.ax14.xaxis.set_ticks(np.arange(0, self.time_period, 500))
-            satistics_str = self.get_satistics_str(self.transfer_statistics)
+            satistics_str = self.get_satistics_str()
             self.ax14.text(0.01, 0.3, satistics_str, style='italic', fontsize=10, color="#ffffff")
 
             # self.ax16.clear()
@@ -347,6 +376,7 @@ class LOBMonitor:
             #                stacked=False)
 
             self.ready_to_plot = False
+
 
 if __name__ == '__main__':
     n_tob = LOBMonitor()

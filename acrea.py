@@ -18,7 +18,7 @@ from scipy.signal import savgol_filter
 
 from binance import AsyncClient, BinanceSocketManager, Client
 # from binance.exceptions import BinanceAPIException
-# from binance.enums import *
+from binance.enums import *
 
 # from sklearn import linear_model
 # from sklearn.preprocessing import PolynomialFeatures
@@ -109,7 +109,7 @@ class BinanceActionLimit:
 
         orders_2 = np.sum(self.order_reg[0:sec + 1]) + np.sum(self.order_reg_yesterday[86400-(86400-sec):-1])
 
-        if requests <= self.request_limit_action and orders_1 <= self.order_limit_1_action and orders_2 <= self.order_limit_2_action:
+        if requests < self.request_limit_action and orders_1 < self.order_limit_1_action and orders_2 < self.order_limit_2_action:
             return True
         else:
             self.count_block_action += 1
@@ -119,7 +119,9 @@ class BinanceActionLimit:
 class AcReA:
 
     def __init__(self, param):
+
         self.binance_action_limit = param['binance_action_limit']
+        self.trade_time = param['trade_time']
         self.bal = BinanceActionLimit()
 
         self.process = param['process']
@@ -137,6 +139,10 @@ class AcReA:
 
         self.trade_profile_limits = np.array(param['trade_profile_limits'])
 
+        self.api_key = "sNtEg0vnKFm09xKf8v9VJWIYspFFouJN5vJO9bSgUSAU8eoAUa5OaMuJYLLsuswr"
+        self.api_secret = "Hhu6MPTOdEKBjZyooPr1JxbgiLME3VFJdymqJrtytrMywKatP08Y5G1Sb9ZuJv4S"
+        self.bx_client = Client(self.api_key, self.api_secret)
+
         self.async_client = None
         self.bm = None
         self.ts = None
@@ -146,7 +152,7 @@ class AcReA:
         self.ts2 = None
 
         self.ntick = .5 / 15000
-        self.time_period = 20000
+        self.time_period = param['time_period']
         self.slot = {'stop_delta': 0.0,
                      'trailer_delta': 0.0,
                      'take_delta': 0.0,
@@ -159,7 +165,7 @@ class AcReA:
                 'stop_delta': self.ntick * 3,
                 'trailer_delta': self.ntick * 1,
                 'take_delta': self.ntick * 8,
-                'max_time_sec': 60 * 120,
+                'max_time_sec': 60 * 90,
                 'extra_time_sec': 60 * 1,
                 'renko_slow_steps': 1,
                 'renko_fast_steps': .25,
@@ -171,7 +177,7 @@ class AcReA:
                 'stop_delta': self.ntick * 3,
                 'trailer_delta': self.ntick * 1,
                 'take_delta': self.ntick * 8,
-                'max_time_sec': 60 * 120,
+                'max_time_sec': 60 * 90,
                 'extra_time_sec': 60 * 1,
                 'renko_slow_steps': 2,
                 'renko_fast_steps': .5,
@@ -183,8 +189,8 @@ class AcReA:
                 'stop_delta': self.ntick * 3,
                 'trailer_delta': self.ntick * 1,
                 'take_delta': self.ntick * 8,
-                'max_time_sec': 60 * 120,
-                'extra_time_sec': 60 * 1,
+                'max_time_sec': 60 * 90,
+                'extra_time_sec': 60 * 90,
                 'renko_slow_steps': 5,
                 'renko_fast_steps': .7,
                 'renko_stop_steps': .75,
@@ -224,11 +230,7 @@ class AcReA:
         # két esetben direkt címzem (4,7) a többi esetben set_slot_position_array használom
         # két esetben számít a sebesség
 
-        ###################
-        #  shared memory  #
-        ###################
-
-        self.slot_position_array = param['slot_position_array']
+        self.sh_slot_position_array = param['slot_position_array']
 
         # self.slot_position_array = np.array([0.0] * 10, dtype=np.float32)
 
@@ -248,15 +250,15 @@ class AcReA:
 
         self.qty_rise_flag = False
 
-        self.best_bid_price_history = np.array([0.0] * self.time_period)
-        self.best_ask_price_history = np.array([0.0] * self.time_period)
-        self.renko_slow_price_history = np.array([0.0] * self.time_period)
-        self.renko_fast_price_history = np.array([0.0] * self.time_period)
-        self.renko_stop_price_history = np.array([0.0] * self.time_period)
+        self.sh_best_bid_price_history = param['best_bid_price_history']
+        self.sh_best_ask_price_history = param['best_ask_price_history']
+        self.sh_renko_slow_price_history = param['renko_slow_price_history']
+        self.sh_renko_fast_price_history = param['renko_fast_price_history']
+        self.sh_renko_stop_price_history = param['renko_stop_price_history']
         # self.best_mid_price_history_ma_fast = np.array([0.0] * self.time_period)
         # self.best_mid_price_history_ma_slow = np.array([0.0] * self.time_period)
-        self.smoot_slow_price_history = np.array([0.0] * self.time_period)
-        self.smoot_fast_price_history = np.array([0.0] * self.time_period)
+        self.sh_smoot_slow_price_history = param['smoot_slow_price_history']
+        self.sh_smoot_fast_price_history = param['smoot_fast_price_history']
         # self.best_smoot2_price_history = np.array([0.0] * self.time_period)
         # self.best_smoot3_price_history = np.array([0.0] * self.time_period)
         # self.best_bid_qty_history = np.array([0.0] * self.time_period)
@@ -268,7 +270,7 @@ class AcReA:
         self.decision_long = 500
         self.decision_stop = -500
         self.decision_buy_again = 250
-        self.decision_history = np.array([self.decision_neutral] * self.time_period)
+        self.sh_decision_history = param['decision_history']
 
         self.transfer = np.empty((11, self.time_period))
         self.transfer_status = np.empty(10)
@@ -286,11 +288,7 @@ class AcReA:
                                    'min_value': 8
                                    }
 
-        ###################
-        #  shared memory  #
-        ###################
-
-        self.status_array = param['status_array']
+        self.sh_status_array = param['status_array']
 
         self.actual_profile = 1
         self.set_profile(1, direct=True)
@@ -300,13 +298,13 @@ class AcReA:
     def set_slot_position_array(self):
         for key in self.slot_position:
             if key in self.slot_position_index:
-                self.slot_position_array[int(self.slot_position_index[key])] = float(self.slot_position[key])
+                self.sh_slot_position_array[int(self.slot_position_index[key])] = float(self.slot_position[key])
 
     def status(self, name, value, static=False):
         if static:
-            self.status_array[self.status_array_index[name]] = value
+            self.sh_status_array[self.status_array_index[name]] = value
         else:
-            self.status_array[self.status_array_index[name]] += value
+            self.sh_status_array[self.status_array_index[name]] += value
 
     def set_profile(self, p, direct=False):
         if p != self.actual_profile < p or direct:
@@ -320,7 +318,7 @@ class AcReA:
             self.renko_fast_steps = self.trading_profile[p]['renko_fast_steps']
             self.renko_stop_steps = self.trading_profile[p]['renko_stop_steps']
             self.ddown_limit = self.trading_profile[p]['ddown_limit']
-            self.ddown_points = np.arange(self.trading_profile[p]['ddown_depth'], -1, 20)
+            self.ddown_points = np.arange(self.trading_profile[p]['ddown_depth'], -1, 20).astype(np.int32)
             self.actual_profile = p
             self.slot_position['actual_profile'] = p * 1.0
             self.set_slot_position_array()
@@ -343,35 +341,6 @@ class AcReA:
         task4.join()
         # time.sleep(3)
         # task6.start()
-
-    def data_transfer(self):
-        while True:
-
-            # self.transfer[0] = np.array(self.best_bid_price_history)
-            # self.transfer[1] = np.array(self.best_ask_price_history)
-            # self.transfer[2] = np.array(self.smoot_slow_price_history)
-            # self.transfer[3] = np.array(self.decision_history)
-            # # self.transfer[4] = np.array(self.market_speed_array_avg)
-            # # self.transfer[5] = np.array(self.market_speed_array)
-            # # self.transfer[6] = np.array(self.bid_ask_spread_avg)
-            # # self.transfer[7] = np.array(self.bid_ask_spread)
-            # # self.transfer[8] = np.array(self.best_ask_qty_history)
-            # # self.transfer[9] = np.array(self.best_bid_qty_history)
-            # self.transfer[10] = np.array(self.smoot_fast_price_history)
-            # np.save("transfer_timeseries.npy", self.transfer)
-            #
-            # f = open("transfer_position.pkl", "wb")
-            # pickle.dump(self.slot_position, f)
-            # f.close()
-            #
-            # f = open("transfer_statistics.pkl", "wb")
-            # pickle.dump(self.status_array, f)
-            # f.close()
-
-            print(self.slot_position)
-            print(self.slot_position_array[:])
-            print(self.status_array[:])
-            time.sleep(7)
 
     # def moving_average(self, x, w):
     #     iret = np.concatenate([np.array([x[0]] * (w - 1)), np.convolve(x, np.ones(w), 'valid') / w])
@@ -403,6 +372,56 @@ class AcReA:
         sec = (t.hour * 60 + t.minute) * 60 + t.second
         return self.bal.is_action_limit_ok(sec)
 
+    def order_buy(self, qty_base):
+        # {'symbol': 'BTCBUSD',
+        # 'orderId': 8210613971,
+        # 'orderListId': -1,
+        # 'clientOrderId': 'mX56nOCadPtpCuaxUz8Z0r',
+        # 'transactTime': 1673972204870,
+        # 'price': '0.00000000',
+        #  'origQty': '0.00060000',
+        #  'executedQty': '0.00060000',
+        #  'cummulativeQuoteQty': '12.67965000',
+        #  'status': 'FILLED',
+        #  'timeInForce': 'GTC',
+        #  'type': 'MARKET',
+        #  'side': 'BUY',
+        #  'workingTime': 1673972204870,
+        #  'fills': [{
+        #       'price': '21132.75000000',
+        #       'qty': '0.00060000',
+        #       'commission': '0.00000000',
+        #       'commissionAsset': 'BNB',
+        #       'tradeId': 784648413}],
+        #  'selfTradePreventionMode': 'NONE'}
+
+        dt1 = datetime.now()
+        order_request = self.bx_client.order_market(symbol=self.symbol,
+                                                    side=SIDE_BUY,
+                                                    quantity=str(qty_base))
+        tr_ti = int((datetime.now() - dt1).total_seconds() * 1000)
+        self.trade_time = np.delete(np.append(self.trade_time, [tr_ti], axis=0), 0)
+
+        executed_qty = float(order_request['executedQty'])
+        cummulative_quote_qty = float(order_request['cummulativeQuoteQty'])
+        traded_price = round(cummulative_quote_qty / executed_qty, 8)
+
+        return executed_qty, cummulative_quote_qty, traded_price
+
+    def order_sell(self, qty_base):
+        dt1 = datetime.now()
+        order_request = self.bx_client.order_market(symbol=self.symbol,
+                                                    side=SIDE_SELL,
+                                                    quantity=str(qty_base))
+        tr_ti = int((datetime.now() - dt1).total_seconds() * 1000)
+        self.trade_time = np.delete(np.append(self.trade_time, [tr_ti], axis=0), 0)
+
+        executed_qty = float(order_request['executedQty'])
+        cummulative_quote_qty = float(order_request['cummulativeQuoteQty'])
+        traded_price = round(cummulative_quote_qty / executed_qty, 8)
+
+        return executed_qty, cummulative_quote_qty, traded_price
+
     def buy(self):
         if self.slot_position['qty'] > 0 and self.slot_position['last_buy_price'] < self.actual_ask_price:
             return
@@ -413,7 +432,9 @@ class AcReA:
         calc_qty = round(self.actual_buy_qty_base, 4)
         calc_qty = np.min([max_buy_base, calc_qty])
 
-        if not self.qty_rise_flag and calc_qty >= self.minimum_buy_qty_base and self.is_action_limit_ok():
+        action_limit_ok = self.is_action_limit_ok()
+
+        if not self.qty_rise_flag and calc_qty >= self.minimum_buy_qty_base and action_limit_ok:
 
             existed_value = self.slot_position['income_price'] * self.slot_position['qty']
             new_value = calc_qty * ask_price_fixed
@@ -442,15 +463,19 @@ class AcReA:
             elif self.trade_profile_limits[1] <= position_value / total_exit_value:
                 self.set_profile(3)
 
-            self.decision_history = np.delete(np.append(self.decision_history, [self.decision_long], axis=0), 0)
+            self.sh_decision_history[:] = np.delete(np.append(self.sh_decision_history[:], [self.decision_long], axis=0), 0)
 
             self.set_slot_position_array()
 
             self.reg_order()
 
             self.qty_rise_flag = True
+        elif not self.qty_rise_flag and calc_qty >= self.minimum_buy_qty_base and not action_limit_ok:
+            # ha blokkolta, akkolta akkor növeli a következő vételi mennyiséget
+            self.actual_buy_qty_base *= self.buy_multiplier
+            self.sh_decision_history[:] = np.delete(np.append(self.sh_decision_history[:], [self.decision_neutral], axis=0), 0)
         else:
-            self.decision_history = np.delete(np.append(self.decision_history, [self.decision_neutral], axis=0), 0)
+            self.sh_decision_history[:] = np.delete(np.append(self.sh_decision_history[:], [self.decision_neutral], axis=0), 0)
             # print("")
             # print("Buy", symbol, slot, qty, self.slot_position['income_price'], self.actual_ask_qty[symbol])
 
@@ -482,7 +507,7 @@ class AcReA:
         self.slot_position['extra_flag'] = False
         # self.monitor_fee += round((income_value * 0.025 / 100) + (exit_value * 0.025 / 100), 2)
         self.status('turnover', exit_value)
-        self.decision_history = np.delete(np.append(self.decision_history, [self.decision_stop], axis=0), 0)
+        self.sh_decision_history[:] = np.delete(np.append(self.sh_decision_history[:], [self.decision_stop], axis=0), 0)
         self.actual_buy_qty_base = self.start_buy_qty_base
         self.set_profile(1, direct=True)
         self.set_slot_position_array()
@@ -490,7 +515,7 @@ class AcReA:
         self.qty_rise_flag = False
 
     def allowed_buy_again(self):
-        self.decision_history = np.delete(np.append(self.decision_history, [self.decision_buy_again], axis=0), 0)
+        self.sh_decision_history[:] = np.delete(np.append(self.sh_decision_history[:], [self.decision_buy_again], axis=0), 0)
         self.actual_buy_qty_base *= self.buy_multiplier
         self.qty_rise_flag = False
 
@@ -517,94 +542,6 @@ class AcReA:
         elif i_type == "trade":
             return symbol.lower() + '@trade'
 
-    # async def asyc_websocket_orderbook(self):
-    #     i_socket_list = []
-    #     for symbol in self._traded_symbols:
-    #         # i_socket_list.append(self.get_socket_name(symbol, "trade"))
-    #         i_socket_list.append(self.get_socket_name(symbol, "depth20"))
-    #         # i_socket_list.append(self.get_socket_name(symbol, "bookticker"))
-    #
-    #     self.async_client = await AsyncClient.create()
-    #     self.bm = BinanceSocketManager(self.async_client)
-    #     self.ts = self.bm.multiplex_socket(i_socket_list)
-    #
-    #     async with self.ts as tscm:
-    #         while True:
-    #             res = await tscm.recv()
-    #             # print(res)
-    #             symbol = res['stream'].split('@')[0].upper()
-    #             # stype = res['stream'].split('@')[1]
-    #             # print(datetime.now(), res)
-    #             # {
-    #             #   "lastUpdateId": 160,  // Last update ID
-    #             #   "bids": [             // Bids to be updated
-    #             #     [
-    #             #       "0.0024",         // Price level to be updated
-    #             #       "10"              // Quantity
-    #             #     ]
-    #             #   ],
-    #             #   "asks": [             // Asks to be updated
-    #             #     [
-    #             #       "0.0026",         // Price level to be updated
-    #             #       "100"             // Quantity
-    #             #     ]
-    #             #   ]
-    #             # }
-    #             # if len(self.actual_traded_price[symbol]) >= 3:
-    #             #     calc_base_price = np.sum(self.actual_traded_price[symbol][-3:]) / 3
-    #             # else:
-    #             #     calc_base_price = self.actual_traded_price[symbol][-1]
-    #
-    #             calc_base_price = np.sum(self.actual_traded_price[symbol][-3:]) / 3
-    #             self.base_prices[symbol].append(calc_base_price)
-    #             if len(self.base_prices[symbol]) > self.max_depths[symbol]:
-    #                 self.base_prices[symbol] = self.base_prices[symbol][1:]
-    #
-    #             self.orderbooks[symbol].append(res['data'])
-    #             self.orderbooks[symbol] = self.orderbooks[symbol][-3:]
-    #             # if len(self.orderbooks[symbol]) > self.max_depths[symbol]:
-    #
-    #             for slot in self._symbol_slot[symbol]:
-    #                 if self.total_symbol_position[symbol] == 0:
-    #                     await self.trader(symbol, slot, self.orderbooks[symbol], self.base_prices[symbol])
-
-    # async def asyc_websocket_trade(self):
-    #     i_socket_list = []
-    #     for symbol in self._traded_symbols:
-    #         i_socket_list.append(self.get_socket_name(symbol, "trade"))
-    #         # i_socket_list.append(self.get_socket_name(symbol, "depth20"))
-    #         # i_socket_list.append(self.get_socket_name(symbol, "bookticker"))
-    #
-    #     self.async_client = await AsyncClient.create()
-    #     self.bm = BinanceSocketManager(self.async_client)
-    #     self.ts = self.bm.multiplex_socket(i_socket_list)
-    #
-    #     async with self.ts as tscm:
-    #         while True:
-    #             res = await tscm.recv()
-    #             # print(res)
-    #             symbol = res['stream'].split('@')[0].upper()
-    #             # stype = res['stream'].split('@')[1]
-    #
-    #             # {
-    #             #   "e": "trade",     // Event type
-    #             #   "E": 123456789,   // Event time
-    #             #   "s": "BNBBTC",    // Symbol
-    #             #   "t": 12345,       // Trade ID
-    #             #   "p": "0.001",     // Price
-    #             #   "q": "100",       // Quantity
-    #             #   "b": 88,          // Buyer order ID
-    #             #   "a": 50,          // Seller order ID
-    #             #   "T": 123456785,   // Trade time
-    #             #   "m": true,        // Is the buyer the market maker?
-    #             #   "M": true         // Ignore
-    #             # }
-    #
-    #             self.actual_traded_price[symbol].append(float(res['data']['p']))
-    #             self.last_traded_price = float(res['data']['p'])
-    #             # if len(self.actual_traded_price) > 3:
-    #             self.actual_traded_price[symbol] = self.actual_traded_price[symbol][-3:]
-
     @staticmethod
     def trough_detect(ts):
         if ts[-1] > ts[-2]:
@@ -613,27 +550,28 @@ class AcReA:
             return False
 
     async def add_best_bid_price_history(self, bid):
-        self.best_bid_price_history = np.delete(np.append(self.best_bid_price_history, [bid], axis=0), 0)
+        self.sh_best_bid_price_history[:] = np.delete(np.append(self.sh_best_bid_price_history[:], [bid], axis=0), 0)[:]
 
     async def add_best_ask_price_history(self, ask):
-        self.best_ask_price_history = np.delete(np.append(self.best_ask_price_history, [ask], axis=0), 0)
+        self.sh_best_ask_price_history[:] = np.delete(np.append(self.sh_best_ask_price_history[:], [ask], axis=0), 0)[:]
 
     async def add_renko_slow_price_history_savgol_ddown(self, ask):
-        if self.renko_slow_steps <= abs(self.renko_slow_price_history[-1] - ask):
-            self.renko_slow_price_history = np.delete(np.append(self.renko_slow_price_history, [ask], axis=0), 0)
+        if self.renko_slow_steps <= abs(self.sh_renko_slow_price_history[:][-1] - ask):
+            self.sh_renko_slow_price_history[:] = np.delete(np.append(self.sh_renko_slow_price_history[:], [ask], axis=0), 0)[:]
         else:
-            self.renko_slow_price_history = np.delete(np.append(self.renko_slow_price_history, [self.renko_slow_price_history[-1]], axis=0), 0)
+            self.sh_renko_slow_price_history[:] = np.delete(np.append(self.sh_renko_slow_price_history[:], [self.sh_renko_slow_price_history[:][-1]], axis=0), 0)[:]
 
-        self.smoot_slow_price_history = savgol_filter(self.renko_slow_price_history, 300, 1)
+        self.sh_smoot_slow_price_history[:] = savgol_filter(self.sh_renko_slow_price_history[:], 300, 1)[:]
 
-        ddown = self.smoot_slow_price_history[self.ddown_points] - self.smoot_slow_price_history[-1]
+        ddown_array = np.array(self.sh_smoot_slow_price_history[:])
+        ddown = ddown_array[self.ddown_points] - self.sh_smoot_slow_price_history[:][-1]
         self.ddown = ddown > self.ddown_limit
 
     async def add_renko_fast_price_history(self, ask):
-        if self.renko_fast_steps <= abs(self.renko_fast_price_history[-1] - ask):
-            self.renko_fast_price_history = np.delete(np.append(self.renko_fast_price_history, [ask], axis=0), 0)
+        if self.renko_fast_steps <= abs(self.sh_renko_fast_price_history[:][-1] - ask):
+            self.sh_renko_fast_price_history[:] = np.delete(np.append(self.sh_renko_fast_price_history[:], [ask], axis=0), 0)[:]
         else:
-            self.renko_fast_price_history = np.delete(np.append(self.renko_fast_price_history, [self.renko_fast_price_history[-1]], axis=0), 0)
+            self.sh_renko_fast_price_history[:] = np.delete(np.append(self.sh_renko_fast_price_history[:], [self.sh_renko_fast_price_history[:][-1]], axis=0), 0)[:]
 
     async def async_websocket_bookticker_detect(self):
         i_socket_list = [self.get_socket_name(self.symbol, "bookticker")]
@@ -706,6 +644,7 @@ class AcReA:
                                self.add_best_bid_price_history(bid),
                                self.add_renko_slow_price_history_savgol_ddown(ask),
                                self.add_renko_fast_price_history(ask))
+
                 # print((datetime.now() - dt1) * 10000 )
 
                 # self.smoot_slow_price_history = savgol_filter(self.renko_slow_price_history, 300, 1)
@@ -718,7 +657,7 @@ class AcReA:
                 # ddown = self.smoot_slow_price_history[self.ddown_points] - self.smoot_slow_price_history[-1]
                 # ddown = ddown > self.ddown_limit
 
-                if self.trough_detect(self.renko_fast_price_history) and self.ddown.any():
+                if self.trough_detect(self.sh_renko_fast_price_history[:]) and self.ddown.any():
                     # if len(a) > 0 and ddown.any() and not self.slot_in_position('BTCUSDT_SX3'):
                     # if self.best_smoot_price_history[-10] > self.best_smoot_price_history[-11] < self.best_smoot_price_history[-12] and \
                     #     not self.slot_in_position('BTCUSDT_SX3'):
@@ -728,7 +667,7 @@ class AcReA:
 
                     self.buy()
                 else:
-                    self.decision_history = np.delete(np.append(self.decision_history, [self.decision_neutral], axis=0), 0)
+                    self.sh_decision_history[:] = np.delete(np.append(self.sh_decision_history[:], [self.decision_neutral], axis=0), 0)
 
     async def async_websocket_bookticker_stopper(self):
         i_socket_list = [self.get_socket_name(self.symbol, "bookticker")]
@@ -765,7 +704,7 @@ class AcReA:
                 #     self.renko_stop_price_history = np.delete(np.append(self.renko_stop_price_history, [self.renko_stop_price_history[-1]], axis=0), 0)
 
                 self.slot_position['actual_value'] = self.slot_position['qty'] * (self.actual_bid_price - self.slot_position['income_price'])
-                self.slot_position_array[7] = self.slot_position['actual_value']
+                self.sh_slot_position_array[7] = self.slot_position['actual_value']
 
                 # print(self.slot_position_array)
                 self.monitor_min_value = np.min([self.monitor_min_value, self.slot_position['actual_value']])
@@ -780,9 +719,9 @@ class AcReA:
                     # act_trailer_price = synthetic_price
                     act_trailer_price = selected_price * (1 - self.slot['trailer_delta'])
                     self.slot_position['trailer_stop_price'] = max(self.slot_position['trailer_stop_price'], act_trailer_price)
-                    self.slot_position_array[4] = self.slot_position['trailer_stop_price']
+                    self.sh_slot_position_array[4] = self.slot_position['trailer_stop_price']
 
-                    if self.slot_position['take_price'] <= selected_price and self.smoot_slow_price_history[-1] < self.smoot_slow_price_history[-2]:
+                    if self.slot_position['take_price'] <= selected_price and self.sh_smoot_slow_price_history[:][-1] < self.sh_smoot_slow_price_history[:][-2]:
                         self.stop("Take")
                         self.status('take', 1)
 
@@ -814,7 +753,7 @@ class AcReA:
                             self.status('time', 1)
 
                     elif self.slot_position['trailer_minimum_price'] <= selected_price <= self.slot_position['trailer_stop_price'] \
-                            and self.smoot_slow_price_history[-1] < self.smoot_slow_price_history[-2]:
+                            and self.sh_smoot_slow_price_history[:][-1] < self.sh_smoot_slow_price_history[:][-2]:
                         self.stop("Trailer")
                         self.status('trailer', 1)
 
@@ -822,9 +761,24 @@ class AcReA:
 class Monitor:
 
     def __init__(self, param):
-        self.status_array = param['status_array']
-        self.slot_position_array = param['slot_position_array']
-        self.binance_action_limit = param['binance_action_limit']
+        self.sh_trade_time = param['trade_time']
+        self.sh_status_array = param['status_array']
+        self.sh_slot_position_array = param['slot_position_array']
+        self.sh_binance_action_limit = param['binance_action_limit']
+
+        self.sh_best_bid_price_history = param['best_bid_price_history']
+        self.sh_best_ask_price_history = param['best_ask_price_history']
+        self.sh_renko_slow_price_history = param['renko_slow_price_history']
+        self.sh_renko_fast_price_history = param['renko_fast_price_history']
+        self.sh_renko_stop_price_history = param['renko_stop_price_history']
+        self.sh_smoot_slow_price_history = param['smoot_slow_price_history']
+        self.sh_smoot_fast_price_history = param['smoot_fast_price_history']
+
+        self.sh_decision_history = param['decision_history']
+        self.time_period = param['time_period']
+
+        self.transfer = np.array([[0.0] * self.time_period] * 8)
+
         self.process = param['process']
         self.cores = param['cores']
         self.mpi = str(self.process) + "/" + str(self.cores) + " core ->"
@@ -834,39 +788,63 @@ class Monitor:
     def moving_average(x, w):
         return np.concatenate([np.array([x[0]] * (w - 1)), np.convolve(x, np.ones(w), 'valid') / w])
 
+    def data_transfer(self):
+
+        self.transfer[0][:] = np.array(self.sh_best_bid_price_history[:])
+        self.transfer[1][:] = np.array(self.sh_best_ask_price_history[:])
+        self.transfer[2][:] = np.array(self.sh_renko_slow_price_history[:])
+        self.transfer[3][:] = np.array(self.sh_renko_fast_price_history[:])
+        self.transfer[4][:] = np.array(self.sh_renko_stop_price_history[:])
+        self.transfer[5][:] = np.array(self.sh_smoot_slow_price_history[:])
+        self.transfer[6][:] = np.array(self.sh_smoot_fast_price_history[:])
+        self.transfer[7][:] = np.array(self.sh_decision_history[:])
+
+        np.save("transfer_timeseries.npy", self.transfer[:])
+        np.save("transfer_sh_slot_position_array.npy", self.sh_slot_position_array[:])
+        np.save("transfer_sh_trade_time.npy", self.sh_trade_time[:])
+        np.save("transfer_sh_status_array.npy", self.sh_status_array[:])
+        np.save("transfer_sh_binance_action_limit.npy", self.sh_binance_action_limit[:])
+
+    def print_data(self):
+        print(self.sh_best_bid_price_history[:][-100:])
+
+        slot_position_dict = {'qty': round(self.sh_slot_position_array[0], 8),
+                              'income_price': round(self.sh_slot_position_array[1], 8),
+                              'free_invest_quote': round(self.sh_slot_position_array[2], 8),
+                              'stop_price': round(self.sh_slot_position_array[3], 8),
+                              'trailer_stop_price': round(self.sh_slot_position_array[4], 8),
+                              'trailer_minimum_price': round(self.sh_slot_position_array[5], 8),
+                              'take_price': round(self.sh_slot_position_array[6], 8),
+                              'actual_value_quote': round(self.sh_slot_position_array[7], 8),
+                              'actual_profile': round(self.sh_slot_position_array[8], 8),
+                              'last_buy_price': round(self.sh_slot_position_array[9], 8),
+                              }
+
+        status_array_dict = {'stop': int(self.sh_status_array[0]),
+                             'buy_again': int(self.sh_status_array[1]),
+                             'take': int(self.sh_status_array[2]),
+                             'trailer': int(self.sh_status_array[3]),
+                             'time': int(self.sh_status_array[4]),
+                             'profit': round(self.sh_status_array[5], 8),
+                             'turnover': round(self.sh_status_array[6], 8),
+                             'max_qty': round(self.sh_status_array[7], 8),
+                             'min_value_qoute': round(self.sh_status_array[8], 8)
+                             }
+
+        print(slot_position_dict)
+        print(status_array_dict)
+
+        print("    get_blocked_actions total", self.sh_binance_action_limit[0])
+        print("get_sum_orders24 160000 / 24h", self.sh_binance_action_limit[1])
+        print("     get_max_order 50 / 10sec", self.sh_binance_action_limit[2])
+        print(" get_max_request 1200 / 60sec", self.sh_binance_action_limit[3])
+        print(self.sh_trade_time[:])
+
     def data_manager(self):
         while True:
-            slot_position_dict = {'qty': round(self.slot_position_array[0], 8),
-                                  'income_price': round(self.slot_position_array[1], 8),
-                                  'free_invest_quote': round(self.slot_position_array[2], 8),
-                                  'stop_price': round(self.slot_position_array[3], 8),
-                                  'trailer_stop_price': round(self.slot_position_array[4], 8),
-                                  'trailer_minimum_price': round(self.slot_position_array[5], 8),
-                                  'take_price': round(self.slot_position_array[6], 8),
-                                  'actual_value_quote': round(self.slot_position_array[7], 8),
-                                  'actual_profile': round(self.slot_position_array[8], 8),
-                                  'last_buy_price': round(self.slot_position_array[9], 8),
-                                  }
-
-            status_array_dict = {'stop': int(self.status_array[0]),
-                                 'buy_again': int(self.status_array[1]),
-                                 'take': int(self.status_array[2]),
-                                 'trailer': int(self.status_array[3]),
-                                 'time': int(self.status_array[4]),
-                                 'profit': round(self.status_array[5], 8),
-                                 'turnover': round(self.status_array[6], 8),
-                                 'max_qty': round(self.status_array[7], 8),
-                                 'min_value_qoute': round(self.status_array[8], 8)
-                                 }
-
-            print(slot_position_dict)
-            print(status_array_dict)
-
-            print("    get_blocked_actions total", self.binance_action_limit[0])
-            print("get_sum_orders24 160000 / 24h", self.binance_action_limit[1])
-            print("     get_max_order 50 / 10sec", self.binance_action_limit[2])
-            print(" get_max_request 1200 / 60sec", self.binance_action_limit[3])
-            time.sleep(3)
+            time.sleep(7)
+            # self.print_data()
+            self.data_transfer()
 
 
 if __name__ == '__main__':
@@ -877,9 +855,21 @@ if __name__ == '__main__':
     #  shared memory  #
     ###################
 
+    time_period = 20000
+
     status_array = Array('f', [0.0] * 9)
     slot_position_array = Array('f', [0.0] * 10)
     binance_action_limit = Array('i', [0] * 4)
+    trade_time = Array('i', [0] * 100)
+    decision_history = Array('i', [0] * time_period)
+
+    best_bid_price_history = Array('f', [0.0] * time_period)
+    best_ask_price_history = Array('f', [0.0] * time_period)
+    renko_slow_price_history = Array('f', [0.0] * time_period)
+    renko_fast_price_history = Array('f', [0.0] * time_period)
+    renko_stop_price_history = Array('f', [0.0] * time_period)
+    smoot_slow_price_history = Array('f', [0.0] * time_period)
+    smoot_fast_price_history = Array('f', [0.0] * time_period)
 
     n_acrea = AcReA
     n_monitor = Monitor
@@ -892,9 +882,20 @@ if __name__ == '__main__':
               'minimum_buy_qty_base': 0.0005,
               'buy_multiplier': 1.2,
               'trade_profile_limits': [.1, .3],
+              'time_period': time_period,
               'status_array': status_array,
               'slot_position_array': slot_position_array,
               'binance_action_limit': binance_action_limit,
+              'trade_time': trade_time,
+              'best_bid_price_history': best_bid_price_history,
+              'best_ask_price_history': best_ask_price_history,
+              'renko_slow_price_history': renko_slow_price_history,
+              'renko_fast_price_history': renko_fast_price_history,
+              'renko_stop_price_history': renko_stop_price_history,
+              'smoot_slow_price_history': smoot_slow_price_history,
+              'smoot_fast_price_history': smoot_fast_price_history,
+              'decision_history': decision_history,
+
               }
 
     process1 = Process(target=n_acrea, args=(params,))
@@ -904,9 +905,20 @@ if __name__ == '__main__':
                'process': 2,
                'base': "BTC",
                'quote': "USDT",
+               'time_period': time_period,
                'status_array': status_array,
                'slot_position_array': slot_position_array,
                'binance_action_limit': binance_action_limit,
+               'trade_time': trade_time,
+               'best_bid_price_history': best_bid_price_history,
+               'best_ask_price_history': best_ask_price_history,
+               'renko_slow_price_history': renko_slow_price_history,
+               'renko_fast_price_history': renko_fast_price_history,
+               'renko_stop_price_history': renko_stop_price_history,
+               'smoot_slow_price_history': smoot_slow_price_history,
+               'smoot_fast_price_history': smoot_fast_price_history,
+               'decision_history': decision_history,
+
                }
 
     process2 = Process(target=n_monitor, args=(params2,))
