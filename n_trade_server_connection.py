@@ -9,8 +9,8 @@ class n_trade_server_connection:
     def __init__(self):
         self.sever_name = "Vultr - nDot LOB"
         self.username = 'root'
-        self.password = '3+oNQ6Wn%}6@6d4#'
-        self.hostname = '45.77.9.99'
+        self.password = ''
+        self.hostname = ''
         self.ports = 22
         # self.transport = ""
         # self.sftp = ""
@@ -22,10 +22,10 @@ class n_trade_server_connection:
     def open_connect(self):
         self.log(f"Login. nDot_trade_server: {self.hostname}")
         self.transport = paramiko.Transport((self.hostname, self.ports))
+        self.transport.connect(username=self.username, password=self.password)
         self.transport.default_window_size = 4294967294  # 2147483647
         self.transport.packetizer.REKEY_BYTES = pow(2, 40)
         self.transport.packetizer.REKEY_PACKETS = pow(2, 40)
-        self.transport.connect(username=self.username, password=self.password)
 
         # self.transport.window_size = 3 * 1024 * 1024
         self.sftp = paramiko.SFTPClient.from_transport(self.transport)
@@ -47,6 +47,19 @@ class n_trade_server_connection:
 
         except BaseException as error:
             print(f'n_trade_server_connection -> get exception: {error}')
+
+    def get_fast(self, remotepath, localpath=""):
+        ftp_file = self.sftp.file(remotepath, "r")
+        ftp_file_size = ftp_file.stat().st_size
+        ftp_file.prefetch(ftp_file_size)
+        ftp_file.set_pipelined()
+        ftp_file_data = ftp_file.read(ftp_file_size)
+        print(ftp_file_data)
+        # text_file = open("data.npz", "w")
+        # n = text_file.write(ftp_file_data)
+        # text_file.close()
+        # a = np.load("data.npz")
+        # print(a)
 
     def remove(self, remotepath):
         try:
