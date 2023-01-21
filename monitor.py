@@ -26,19 +26,23 @@ class LOBMonitor:
 
     def __init__(self):
         self.mode = 1
-        self.servers = [{'sever_name': "AcReA1",
-                         'password': '2jQ._n]?}+C=-kAs',
-                         'hostname': '108.61.200.183',
-                         'wm_geometry': '+0+600'},
-                        {'sever_name': "AcReA2",
-                         'password': '7#mURqE@!ZsE9TXK',
-                         'hostname': '45.32.50.249',
-                         'wm_geometry': '+0+300'},
-                        {'sever_name': "AcReA3",
-                         'password': 'L8m!3]PdXFksD5Rq',
-                         'hostname': '45.32.34.217',
+        self.servers = [
+                        # {'sever_name': "AcReA1",
+                        #  'password': '2jQ._n]?}+C=-kAs',
+                        #  'hostname': '108.61.200.183',
+                        #  'wm_geometry': '+0+600'},
+                        # {'sever_name': "AcReA2",
+                        #  'password': '7#mURqE@!ZsE9TXK',
+                        #  'hostname': '45.32.50.249',
+                        #  'wm_geometry': '+0+300'},
+                        # {'sever_name': "AcReA3",
+                        #  'password': 'L8m!3]PdXFksD5Rq',
+                        #  'hostname': '45.32.34.217',
+                        #  'wm_geometry': '+0+0'},
+                        {'sever_name': "AcReA4",
+                         'password': 'k4]UnFa?jjQfutHh',
+                         'hostname': '45.76.103.196',
                          'wm_geometry': '+0+0'},
-
                         ]
         self.servers_count = len(self.servers)
 

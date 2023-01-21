@@ -43,8 +43,8 @@ class BTest:
         self.bx_client = Client(self.api_key, self.api_secret)
 
         self.count = 0
-
-        self.start_threads()
+        self.get_info()
+        # self.start_threads()
 
     def start_threads(self):
         task4 = Thread(target=self.bookticker_detect, args=[])
@@ -59,13 +59,26 @@ class BTest:
         loop.run_until_complete(self.async_websocket_bookticker_detect())
         loop.close()
 
+    def get_info(self):
+        info = self.bx_client.get_isolated_margin_symbol(symbol='BTCBUSD')
+        print(info)
+        info = self.bx_client.get_margin_price_index(symbol='BTCBUSD')
+        print(info)
+
     def buy(self):
         symbol = "BTCBUSD"
         qty = 0.0006
         dt1 = datetime.datetime.now()
-        order1 = self.bx_client.order_market(symbol=symbol,
-                                             side=SIDE_BUY,
-                                             quantity=str(qty))
+        # order1 = self.bx_client.order_market(symbol=symbol,
+        #                                      side=SIDE_BUY,
+        #                                      quantity=str(qty))
+
+        order1 = self.bx_client.create_margin_order(symbol=symbol,
+                                                    side=SIDE_BUY,
+                                                    type=ORDER_TYPE_MARKET,
+                                                    quantity=str(qty),
+                                                    isIsolated='TRUE')
+
         print('speed', datetime.datetime.now() - dt1)
         print(order1)
 
@@ -73,9 +86,16 @@ class BTest:
         symbol = "BTCBUSD"
         qty = 0.0006
         dt1 = datetime.datetime.now()
-        order2 = self.bx_client.order_market(symbol=symbol,
-                                             side=SIDE_SELL,
-                                             quantity=str(qty))
+        # order2 = self.bx_client.order_market(symbol=symbol,
+        #                                      side=SIDE_SELL,
+        #                                      quantity=str(qty))
+
+        order2 = self.bx_client.create_margin_order(symbol=symbol,
+                                                    side=SIDE_SELL,
+                                                    type=ORDER_TYPE_MARKET,
+                                                    quantity=str(qty),
+                                                    isIsolated='TRUE')
+
         print('speed:', datetime.datetime.now() - dt1)
         print(order2)
 
@@ -124,7 +144,6 @@ class BTest:
                 # bid_qty = float(res['data']['B'])
                 ask = float(res['data']['a'])
                 # ask_qty = float(res['data']['A'])
-
                 if self.count == 500:
                     print('BUY ask:', ask, 'bid:', bid)
                     self.buy()

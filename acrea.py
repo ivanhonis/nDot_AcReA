@@ -161,7 +161,7 @@ class AcReA:
                      }
 
         ddown_state = 4.25
-        ddown_multiplier = 1
+        ddown_multiplier = .5
         self.trading_profile = {
             1: {
                 'stop_delta': self.ntick * 3,
@@ -415,9 +415,16 @@ class AcReA:
         #  'selfTradePreventionMode': 'NONE'}
 
         dt1 = datetime.now()
-        order_request = self.bx_client.order_market(symbol=self.symbol,
-                                                    side=SIDE_BUY,
-                                                    quantity=str(qty_base))
+        # order_request = self.bx_client.order_market(symbol=self.symbol,
+        #                                             side=SIDE_BUY,
+        #                                             quantity=str(qty_base))
+
+        order_request = self.bx_client.create_margin_order(symbol=self.symbol,
+                                                           side=SIDE_BUY,
+                                                           type=ORDER_TYPE_MARKET,
+                                                           quantity=str(qty_base),
+                                                           isIsolated='TRUE')
+
         tr_ti = int((datetime.now() - dt1).total_seconds() * 1000)
         self.trade_time = np.delete(np.append(self.trade_time, [tr_ti], axis=0), 0)
 
@@ -430,9 +437,16 @@ class AcReA:
 
     def order_sell(self, qty_base):
         dt1 = datetime.now()
-        order_request = self.bx_client.order_market(symbol=self.symbol,
-                                                    side=SIDE_SELL,
-                                                    quantity=str(qty_base))
+        # order_request = self.bx_client.order_market(symbol=self.symbol,
+        #                                             side=SIDE_SELL,
+        #                                             quantity=str(qty_base))
+
+        order_request = self.bx_client.create_margin_order(symbol=self.symbol,
+                                                           side=SIDE_SELL,
+                                                           type=ORDER_TYPE_MARKET,
+                                                           quantity=str(qty_base),
+                                                           isIsolated='TRUE')
+
         tr_ti = int((datetime.now() - dt1).total_seconds() * 1000)
         self.trade_time = np.delete(np.append(self.trade_time, [tr_ti], axis=0), 0)
 
@@ -447,7 +461,6 @@ class AcReA:
         if self.slot_position['qty'] > 0 and self.slot_position['last_buy_price'] < self.actual_ask_price:
             self.decision_history = np.delete(np.append(self.decision_history, [self.decision_neutral], axis=0), 0)
             return
-        time.sleep(0.015)
 
         ask_price_fixed = self.actual_ask_price
         max_buy_base = round(self.slot_position['free_invest_quote'] / ask_price_fixed, 4)
@@ -880,8 +893,8 @@ if __name__ == '__main__':
               'process': 1,
               'base': "BTC",
               'quote': "BUSD",
-              'deposit_quote': 1000,
-              'max_invest_quote': 1000 * 4,
+              'deposit_quote': 30,
+              'max_invest_quote': 150,
               'minimum_buy_qty_base': 0.0005,
               'buy_multiplier': 1.05,
               'trade_profile_limits': [.1, .3],
