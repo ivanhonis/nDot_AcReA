@@ -161,7 +161,7 @@ class AcReA:
                      }
 
         ddown_state = 4.25
-        ddown_multiplier = 1.5
+        ddown_multiplier = 1
         self.trading_profile = {
             1: {
                 'stop_delta': self.ntick * 3,

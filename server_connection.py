@@ -4,7 +4,7 @@ import pickle
 import numpy as np
 
 
-class n_trade_server_connection:
+class server_connection:
 
     def __init__(self):
         self.sever_name = "Vultr - nDot LOB"
@@ -77,7 +77,7 @@ class n_trade_server_connection:
 
 
 if __name__ == '__main__':
-    tc = n_trade_server_connection()
+    tc = server_connection()
     tc.open_connect()
     print(tc.listdir("/root/"))
     tc.get("/root/bid_ask_spread_avg.npy", "./monitor_data/bid_ask_spread_avg.npy")

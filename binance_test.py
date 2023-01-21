@@ -60,7 +60,6 @@ class BTest:
         loop.close()
 
     def buy(self):
-
         symbol = "BTCBUSD"
         qty = 0.0006
         dt1 = datetime.datetime.now()

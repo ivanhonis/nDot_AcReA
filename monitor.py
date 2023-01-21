@@ -3,23 +3,23 @@ import sys
 import time
 import pickle
 import numpy as np
-import pandas as pd
+# import pandas as pd
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import seaborn as sns
-from scipy.signal import savgol_filter
+# from scipy.signal import savgol_filterz
 import asyncio
 from threading import Thread
 import psutil
 
 np.set_printoptions(threshold=5000)
-pd.set_option('display.max_rows', None)
-pd.set_option('display.max_columns', None)
-pd.set_option('display.width', 2000)
-pd.set_option('display.float_format', '{:8,.4f}'.format)
-pd.set_option('display.max_colwidth', None)
-from n_trade_server_connection import n_trade_server_connection
+# pd.set_option('display.max_rows', None)
+# pd.set_option('display.max_columns', None)
+# pd.set_option('display.width', 2000)
+# pd.set_option('display.float_format', '{:8,.4f}'.format)
+# pd.set_option('display.max_colwidth', None)
+from server_connection import server_connection
 
 
 class LOBMonitor:
@@ -63,7 +63,7 @@ class LOBMonitor:
         for i in range(self.servers_count):
             self.d[i]['last_best_bid_price_history'] = 0.0
             self.d[i]['ready_to_plot'] = False
-            self.tc[i] = n_trade_server_connection()
+            self.tc[i] = server_connection()
 
         for i in range(self.servers_count):
             self.start_data_transfer_thread(self.tc[i], i)
@@ -92,13 +92,13 @@ class LOBMonitor:
 
     def start_create_chart_thread(self):
         sns.set_theme(style="whitegrid", font_scale=.8)
-        ani = [[]] * len(self.servers)
+        ani = [[], [], [], [], [], [], [], [], [], [], [], []]
+        time.sleep(3)
         for sid in range(len(self.servers)):
-            time.sleep(1)
             self.p[sid]['fig'], self.p[sid]['ax'] = plt.subplots(4, 1,
                                                                  gridspec_kw={'height_ratios': [2, 4, 1, .7]},
                                                                  figsize=(17, 6),
-                                                                 num=sid+1)
+                                                                 num=sid + 1)
 
             self.p[sid]['fig'].canvas.mpl_connect('close_event', self.on_close)
 
@@ -107,20 +107,10 @@ class LOBMonitor:
             self.p[sid]['ax13'] = self.p[sid]['fig'].add_subplot(4, 1, 3)
             self.p[sid]['ax14'] = self.p[sid]['fig'].add_subplot(4, 1, 4)
 
-            # self.ax21 = fig.add_subplot(3, 2, 2)
-            # self.ax22 = fig.add_subplot(4, 2, 4)
-            # self.ax22.axis('off')
-            # self.ax23 = fig.add_subplot(4, 2, 6)
-            # self.ax23.axis('off')
-
             plt.autoscale(False)
             for axx in self.p[sid]['ax']:
                 axx.set_xticks([])
                 axx.set_yticks([])
-                # axx[0].set_xticks([])
-                # axx[0].set_yticks([])
-                # axx[1].set_xticks([])
-                # axx[1].set_yticks([])
 
             plt.subplots_adjust(left=0.05, right=.98, top=.95, bottom=0.05, hspace=-0.01, wspace=0.01)
             ani[sid] = animation.FuncAnimation(self.p[sid]['fig'], self.animate_plot, interval=1000 * 3, fargs=(sid,))
@@ -214,8 +204,8 @@ class LOBMonitor:
     #         time.sleep(3)
 
     async def data_transfer(self, connect, sid):
-        connect.password = self.servers[sid - 1]['password']
-        connect.hostname = self.servers[sid - 1]['hostname']
+        connect.password = self.servers[sid]['password']
+        connect.hostname = self.servers[sid]['hostname']
         connect.open_connect()
         while True:
             if not self.d[sid]['ready_to_plot']:

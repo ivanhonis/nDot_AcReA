@@ -19,14 +19,14 @@ pd.set_option('display.max_columns', None)
 pd.set_option('display.width', 2000)
 pd.set_option('display.float_format', '{:8,.4f}'.format)
 pd.set_option('display.max_colwidth', None)
-from n_trade_server_connection import n_trade_server_connection
+from server_connection import server_connection
 
 
 
 class LOBMonitor:
 
     def __init__(self):
-        self.tc = n_trade_server_connection()
+        self.tc = server_connection()
 
         self.last = -20000
         self.time_period = 20000
