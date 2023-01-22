@@ -1,5 +1,8 @@
 import sys
 import time
+import os
+import psutil
+
 import pickle
 from datetime import datetime, timedelta
 
@@ -44,6 +47,8 @@ class BTest:
 
         self.count = 0
         self.get_info()
+        # self.buy()
+        self.sell()
         # self.start_threads()
 
     def start_threads(self):
@@ -84,7 +89,7 @@ class BTest:
 
     def sell(self):
         symbol = "BTCBUSD"
-        qty = 0.0006
+        qty = 0.0012
         dt1 = datetime.datetime.now()
         # order2 = self.bx_client.order_market(symbol=symbol,
         #                                      side=SIDE_SELL,
@@ -112,6 +117,12 @@ class BTest:
             return symbol.lower() + '@ticker'
         elif i_type == "trade":
             return symbol.lower() + '@trade'
+
+    def forced_exit(self):
+        print('exit')
+        current_system_pid = os.getpid()
+        process = psutil.Process(current_system_pid)
+        process.terminate()
 
     async def async_websocket_bookticker_detect(self):
         i_socket_list = [self.get_socket_name(self.symbol, "bookticker")]
@@ -147,42 +158,17 @@ class BTest:
                 if self.count == 500:
                     print('BUY ask:', ask, 'bid:', bid)
                     self.buy()
-                elif self.count == 1000:
-                    print('SELL ask:', ask, 'bid:', bid)
-                    self.sell()
-                    sys.exit()
+                    self.forced_exit()
+                # elif self.count == 1000:
+                #     print('SELL ask:', ask, 'bid:', bid)
+                #     self.sell()
+                #     sys.exit()
 
                 self.count += 1
 
 
 
 if __name__ == '__main__':
-    cores = cpu_count()
-    running_processes = []
-
     n_btest = BTest()
-    while True:
-        time.sleep(100)
-
-
-
-
-
-
-#
-# symbol = "BTCBUSD"
-# qty = 0.0006
-# dt1 = datetime.datetime.now()
-# order1 = bx_client.order_market(symbol=symbol,
-#                         side=SIDE_BUY,
-#                         quantity=str(qty))
-# print('speed', datetime.datetime.now() - dt1)
-# print(order1)
-#
-#
-# dt1 = datetime.datetime.now()
-# order2 = bx_client.order_market(symbol=symbol,
-#                         side=SIDE_SELL,
-#                         quantity=str(qty))
-# print('speed', datetime.datetime.now() - dt1)
-# print(order2)
+    # while True:
+    #     time.sleep(100)
