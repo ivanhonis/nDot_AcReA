@@ -9,8 +9,8 @@ for KILLPID in `ps ax | grep 'python3' | awk ' { print $1;}'`; do
 done
 
 echo --------------------------------------
-echo Run: acrea.py
+echo Run: flex_acrea.py
 echo --------------------------------------
 
-nohup python3 acrea.py > output.log &
+nohup python3 flex_acrea.py > output.log &
 

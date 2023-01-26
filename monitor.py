@@ -28,20 +28,15 @@ np.set_printoptions(threshold=5000)
 class LOBMonitor:
 
     def __init__(self):
-        self.mode = 1
         self.servers = [
-            {'server_name': "AcReA1",
-             'wm_geometry': '+0+700',
-             'slot': 1},
-            {'server_name': "AcReA2",
-             'wm_geometry': '+0+500',
-             'slot': 2},
+            # {'server_name': "AcReA1",
+            #  'slot': 1},
+            # {'server_name': "AcReA2",
+            #  'slot': 2},
             {'server_name': "AcReA3",
-             'wm_geometry': '+0+250',
              'slot': 3},
-            {'server_name': "AcReA4",
-             'wm_geometry': '+0+0',
-             'slot': 4},
+            # {'server_name': "AcReA4",
+            #  'slot': 4},
         ]
         self.servers_count = len(self.servers)
 
@@ -98,14 +93,20 @@ class LOBMonitor:
         task.start()
 
     def start_create_chart_thread(self):
-        sns.set_theme(style="whitegrid", font_scale=.8)
+        sns.set_theme(style="whitegrid", font_scale=.5)
         ani = [[], [], [], [], [], [], [], [], [], [], [], []]
         time.sleep(3)
+
+        wm_geometry = ['+0+0',
+                       '+1920+0',
+                       '+0+1030',
+                       '+1920+1030']
+
         for i in range(len(self.servers)):
             sid = self.servers[i]['slot']
             self.p[sid]['fig'], self.p[sid]['ax'] = plt.subplots(4, 1,
-                                                                 gridspec_kw={'height_ratios': [2, 4, 1, .7]},
-                                                                 figsize=(17, 5.5),
+                                                                 gridspec_kw={'height_ratios': [2, 4, 1, 2]},
+                                                                 figsize=(8.7, 4),
                                                                  num=sid + 1)
 
             self.p[sid]['fig'].canvas.mpl_connect('close_event', self.on_close)
@@ -119,31 +120,33 @@ class LOBMonitor:
             for axx in self.p[sid]['ax']:
                 axx.set_xticks([])
                 axx.set_yticks([])
+                axx.get_yaxis().set_visible(False)
+                axx.xaxis.set_major_formatter(plt.NullFormatter())
+                axx.spines['bottom'].set_visible(False)
 
             plt.subplots_adjust(left=0.05, right=.98, top=.95, bottom=0.05, hspace=-0.01, wspace=0.01)
-            ani[sid] = animation.FuncAnimation(self.p[sid]['fig'], self.animate_plot, interval=1000 * 3, fargs=(sid,))
-            self.p[sid]['fig'].canvas.manager.window.wm_geometry(self.servers[i]['wm_geometry'])
+            ani[sid] = animation.FuncAnimation(self.p[sid]['fig'], self.animate_plot, interval=1000 * 2, fargs=(sid,))
+            self.p[sid]['fig'].canvas.manager.window.wm_geometry(wm_geometry[i])
         plt.show()
 
-    async def download_transfer_timeseries(self, connect, server_id):
-        connect.get("/root/transfer_timeseries.npz", "./monitor_data/transfer_timeseries_" + str(server_id) + ".npz")
-
-    async def download_transfer_sh_slot_position_array(self, connect, server_id):
-        connect.get("/root/transfer_sh_slot_position_array.npz", "./monitor_data/transfer_sh_slot_position_array_" + str(server_id) + ".npz")
-
-    async def download_transfer_sh_trade_time(self, connect, server_id):
-        connect.get("/root/transfer_sh_trade_time.npz", "./monitor_data/transfer_sh_trade_time_" + str(server_id) + ".npz")
-
-    async def download_transfer_sh_status_array(self, connect, server_id):
-        connect.get("/root/transfer_sh_status_array.npz", "./monitor_data/transfer_sh_status_array_" + str(server_id) + ".npz")
-
-    async def download_transfer_sh_binance_action_limit(self, connect, server_id):
-        connect.get("/root/transfer_sh_binance_action_limit.npz", "./monitor_data/transfer_sh_binance_action_limit_" + str(server_id) + ".npz")
+    # async def download_transfer_timeseries(self, connect, server_id):
+    #     connect.get("/root/transfer_timeseries.npz", "./monitor_data/transfer_timeseries_" + str(server_id) + ".npz")
+    #
+    # async def download_transfer_sh_slot_position_array(self, connect, server_id):
+    #     connect.get("/root/transfer_sh_slot_position_array.npz", "./monitor_data/transfer_sh_slot_position_array_" + str(server_id) + ".npz")
+    #
+    # async def download_transfer_sh_trade_time(self, connect, server_id):
+    #     connect.get("/root/transfer_sh_trade_time.npz", "./monitor_data/transfer_sh_trade_time_" + str(server_id) + ".npz")
+    #
+    # async def download_transfer_sh_status_array(self, connect, server_id):
+    #     connect.get("/root/transfer_sh_status_array.npz", "./monitor_data/transfer_sh_status_array_" + str(server_id) + ".npz")
+    #
+    # async def download_transfer_sh_binance_action_limit(self, connect, server_id):
+    #     connect.get("/root/transfer_sh_binance_action_limit.npz", "./monitor_data/transfer_sh_binance_action_limit_" + str(server_id) + ".npz")
 
     def data_read(self, sid):
         path = "./sync_remote/acrea" + str(sid) + "/transfer_all.npz"
         path_temp = "./sync_remote/acrea" + str(sid) + "/transfer_all_temp.npz"
-        file_dt = '0'
         while True:
             # if sid == 1:
             #     print(os.stat(path))
@@ -158,6 +161,7 @@ class LOBMonitor:
                     status_array = np.array(transfer_all["array3"])
                     binance_action_limit_array = np.array(transfer_all["array4"])
                     transfer = np.array(transfer_all["array5"])
+                    self.d[sid]['settings_name'] = "  ".join(transfer_all["array6"])
                 except:
                     # print('except file copy read')
                     time.sleep(.5)
@@ -217,14 +221,14 @@ class LOBMonitor:
                 "yield": status_array[9],
                 "simulation": status_array[10],
             }
-            time.sleep(3)
+            time.sleep(2)
 
     def get_limit_str(self, sid):
         blocked_actions = self.d[sid]['binance_action_limit']["blocked_actions"]
         sum_orders24 = self.d[sid]['binance_action_limit']["sum_orders24"]
         max_order = self.d[sid]['binance_action_limit']["max_order"]
         max_request = self.d[sid]['binance_action_limit']["max_request"]
-        r_str = f"Limit:                     ||  Blocked actions: {blocked_actions}     Sum_orders24 (160000 / 24h): {sum_orders24}     max_order (50 / 10 sec): {max_order}    " \
+        r_str = f"Blocked actions: {blocked_actions}     Sum_orders24 (160000 / 24h): {sum_orders24}     max_order (50 / 10 sec): {max_order}    " \
                 f"Max request (1200 / 60 sec): {max_request}   "
         return r_str
 
@@ -237,7 +241,7 @@ class LOBMonitor:
         monitor_turnover = round(float(self.d[sid]['status']['turnover']), 2)
         monitor_max_qty = round(float(self.d[sid]['status']['max_qty']), 6)
         monitor_min_value = round(float(self.d[sid]['status']['min_value']), 2)
-        r_str = f"Status:                  ||   Take: {monitor_take}   Stop: {monitor_stop}   Trailer: {monitor_trailer}  " \
+        r_str = f"Take: {monitor_take}   Stop: {monitor_stop}   Trailer: {monitor_trailer}  " \
                 f"Buy_again: {monitor_buy_again}   Time: {monitor_time}   " \
                 f"Turn_over: {monitor_turnover} USD   Max.qty: {monitor_max_qty} BTC   Min.value: {monitor_min_value} USD"
         return r_str
@@ -257,9 +261,9 @@ class LOBMonitor:
         last_buy_price = round(self.d[sid]['slot_position']['last_buy_price'], 8)
         exit_value = round(self.d[sid]['slot_position']['exit_value'], 8)
 
-        r_str = f"Actual position:     ||   Qty: {qty} BTC     free_invest: {free_invest_quote} USD     " \
-                f"actual_value: {actual_value} USD     last_buy_price: {last_buy_price} USD     actual_profile: {actual_profile}      " \
-                f"exit_value: {exit_value}"
+        r_str = f"Qty: {qty} BTC     free_invest: {free_invest_quote} USD     " \
+                f"act._val.: {actual_value} USD   last_buy_prc.: {last_buy_price} USD   act._profile: {actual_profile}   " \
+                f"exit_val.: {exit_value}"
         return r_str
 
     def animate_plot(self, i, sid):
@@ -271,8 +275,38 @@ class LOBMonitor:
             try:
                 self.p[sid]['fig'].canvas.manager.set_window_title(self.d[sid]['server_name'])
 
+                # TEXT
+                self.p[sid]['ax14'].clear()
+                self.p[sid]['ax14'].grid(color='#666666', linestyle='', linewidth=0)
+
+                if self.d[sid]['status']['simulation'] == 1:
+                    self.p[sid]['ax14'].set_facecolor('#666666')
+                else:
+                    self.p[sid]['ax14'].set_facecolor('#AB6A6E')
+
+                # self.ax14.margins(x=0)
+                # self.ax14.set_ylim(100, 800)
+                self.p[sid]['ax14'].get_yaxis().set_ticks([])
+                self.p[sid]['ax14'].xaxis.set_major_formatter(plt.NullFormatter())
+                # self.p[sid]['ax14'].spines['bottom'].set_visible(False)
+                # self.ax14.xaxis.set_ticks(np.arange(0, self.time_period, 500))
+                x = .17
+                s1 = .1
+                s2 = s1 + x
+                s3 = s2 + x
+                s4 = s3 + x
+                s5 = s4 + x
+
+                self.p[sid]['ax14'].text(0.01, s1, self.get_status_str(sid), style='normal', fontsize=8, color="#ffffff")
+                self.p[sid]['ax14'].text(0.01, s2, self.get_limit_str(sid), style='normal', fontsize=8, color="#ffffff")
+                self.p[sid]['ax14'].text(0.01, s3, self.get_position_str(sid), style='normal', fontsize=8, color="#ffffff")
+                self.p[sid]['ax14'].text(0.01, s4, self.get_profit_str(sid), style='normal', fontsize=8, color="#ffffff")
+                self.p[sid]['ax14'].text(0.01, s5, self.d[sid]['settings_name'], style='normal', fontsize=8, color="#ffffff")
+
+                # chart
                 self.p[sid]['ax11'].clear()
                 self.p[sid]['ax11'].margins(x=0)
+                self.p[sid]['ax11'].xaxis.set_major_formatter(plt.NullFormatter())
                 self.d[sid]['ylim_min'] = np.min(self.d[sid]['best_bid_price_history'][self.d[sid]['best_bid_price_history'] > 0]) - .5
                 self.d[sid]['ylim_max'] = np.max(self.d[sid]['best_ask_price_history'][self.d[sid]['best_ask_price_history'] > 0]) + .5
 
@@ -298,6 +332,7 @@ class LOBMonitor:
 
                 self.p[sid]['ax12'].clear()
                 self.p[sid]['ax12'].margins(x=0)
+                self.p[sid]['ax12'].xaxis.set_major_formatter(plt.NullFormatter())
                 if self.d[sid]['slot_position']['income_price'] != 0:
                     self.d[sid]['ylim_min'] = np.min(self.d[sid]['best_bid_price_history'][self.zoom_part:][self.d[sid]['best_bid_price_history'][self.zoom_part:] > 0]) - .5
                     self.d[sid]['ylim_max'] = np.max(self.d[sid]['best_ask_price_history'][self.zoom_part:][self.d[sid]['best_ask_price_history'][self.zoom_part:] > 0]) + .5
@@ -329,7 +364,6 @@ class LOBMonitor:
 
                 self.p[sid]['ax12'].legend(['sm slow', 'sm fast', 'rs slow', 'rf fast', 'ask', 'bid'], loc=2)
 
-
                 # # print(self.ylim_min, self.ylim_max)
                 # # self.ax1.plot(x, y_bid)
                 # self.ax12.clear()
@@ -342,7 +376,6 @@ class LOBMonitor:
                 # self.market_speed_array[self.market_speed_array == 0] = np.min(self.market_speed_array[self.market_speed_array > 0])
                 # # avg2 = np.mean(self.market_speed_array_avg)
                 # self.market_speed_array_avg[self.market_speed_array_avg == 0] = np.min(self.market_speed_array_avg[self.market_speed_array_avg > 0])
-
 
                 # self.ax12.xaxis.set_ticks(np.arange(0, self.time_period, 500))
                 # self.ax12.plot(self.xaxis, self.market_speed_array, 'y-', alpha=0.9, linewidth=2)
@@ -369,6 +402,7 @@ class LOBMonitor:
 
                 self.p[sid]['ax13'].clear()
                 self.p[sid]['ax13'].margins(x=0)
+                self.p[sid]['ax13'].xaxis.set_major_formatter(plt.NullFormatter())
                 self.p[sid]['ax13'].set_ylim(-600, 600)
                 self.p[sid]['ax13'].get_yaxis().set_ticks([])
                 self.p[sid]['ax13'].xaxis.set_ticks(np.arange(0, self.time_period, 500))
@@ -378,24 +412,9 @@ class LOBMonitor:
                 self.p[sid]['ax13'].plot(self.xaxis_zoom, self.d[sid]['decision_history'][self.zoom_part:], 'g.', linewidth=2)
                 # self.p[sid]['ax13'].bar(self.xaxis_zoom_1s, self.d[sid]['decision_history'][self.zoom_part:], width=0.8)
 
-                self.p[sid]['ax14'].clear()
-                self.p[sid]['ax14'].grid(color='#666666', linestyle='', linewidth=0)
-
-                if self.d[sid]['status']['simulation'] == 1:
-                    self.p[sid]['ax14'].set_facecolor('#666666')
-                else:
-                    self.p[sid]['ax14'].set_facecolor('#AB6A6E')
-
-                # self.ax14.margins(x=0)
-                # self.ax14.set_ylim(100, 800)
-                self.p[sid]['ax14'].get_yaxis().set_ticks([])
-                # self.ax14.xaxis.set_ticks(np.arange(0, self.time_period, 500))
-                self.p[sid]['ax14'].text(0.01, 0.1, self.get_status_str(sid), style='italic', fontsize=10, color="#ffffff")
-                self.p[sid]['ax14'].text(0.83, 0.1, self.get_profit_str(sid), style='italic', fontsize=10, color="#ffffff")
-                self.p[sid]['ax14'].text(0.01, 0.4, self.get_limit_str(sid), style='italic', fontsize=10, color="#ffffff")
-                self.p[sid]['ax14'].text(0.01, 0.7, self.get_position_str(sid), style='italic', fontsize=10, color="#ffffff")
             except:
-                print("plot error.")
+                pass
+                # print("plot error.")
 
 if __name__ == '__main__':
     n_tob = LOBMonitor()

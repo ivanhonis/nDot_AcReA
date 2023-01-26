@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timedelta
 # import psutil
 
-from numba import int32
+from numba import int32, types, typed
 from numba.experimental import jitclass
 # from numba import njit, objmode, void
 # import numba
@@ -27,8 +27,50 @@ from binance.enums import *
 # from sklearn.preprocessing import PolynomialFeatures
 # from sklearn.pipeline import make_pipeline
 # from sklearn.linear_model import LinearRegression
-
 np.set_printoptions(threshold=5000)
+
+
+time_dict_type = (types.int64, types.int64)
+spec = [
+    ('socket_action', types.DictType(*time_dict_type)),
+    ('trade_allowe_timestamp', int32),
+    ('trade_ban', int32),
+    ('speed_limit', int32),
+]
+
+
+@jitclass(spec)
+class SocketActionLimit:
+
+    def __init__(self):
+        self.socket_action = typed.Dict.empty(*time_dict_type)
+        self.trade_allowe_timestamp = 0
+        self.trade_ban = 5  # sec
+        self.speed_limit = 350  # socket action per sec
+
+    def set_action(self, timestamp):
+        if timestamp in self.socket_action:
+            self.socket_action[timestamp] += 1
+        else:
+            self.socket_action[timestamp] = 1
+
+        if self.socket_action[timestamp] > 350:
+            self.trade_allowe_timestamp = timestamp + self.trade_ban
+
+        if timestamp - 3 in self.socket_action:
+            del self.socket_action[timestamp - 3]
+
+    def get_last_summa(self, timestamp, shift=0):
+        if (timestamp - 1 + shift) in self.socket_action:
+            return self.socket_action[timestamp - 1 + shift]
+        else:
+            return 0
+
+    def is_trade_allow(self, timestamp):
+        if timestamp > self.trade_allowe_timestamp:
+            return True
+        else:
+            return False
 
 spec = [
     ('request_limit_sec', int32),
@@ -129,8 +171,11 @@ class AcReA:
         self.simulation = param['simulation']
         self.reg_trading_mode()
 
-        self.socket_counter = 0         # addig nem tédel amíg nem meg minim 2000 + 5000 adat
+        self.socket_counter = 0         # addig nem trédel amíg nem megy minim 2000 + 5000 adat
         self.socket_extra_delay = 5000
+        self.sal = SocketActionLimit()
+        self.max_socket_action = 0
+        self.max_socket_action_dt = datetime.now()
 
         self.deposit_quote = param['deposit_quote']
         self.server_start_dt = datetime.now()
@@ -284,13 +329,13 @@ class AcReA:
         self.start_threads()
 
     def reg_trading_mode(self):
-        path = r"./real_trading.txt"
-        if os.path.exists(path):
-            os.remove(path)
+        ipath = r"./real_trading.txt"
+        if os.path.exists(ipath):
+            os.remove(ipath)
 
-        path = r"./simulation.txt"
-        if os.path.exists(path):
-            os.remove(path)
+        ipath = r"./simulation.txt"
+        if os.path.exists(ipath):
+            os.remove(ipath)
 
         if self.simulation:
             with open("./simulation.txt", "a") as f:
@@ -308,7 +353,16 @@ class AcReA:
             self.sh_status_array[10] = 0
 
     def min_max_bid(self, x, y):
-        return (np.max(self.best_bid_price_history[self.best_bid_price_history > 0]) / np.min(self.best_bid_price_history[self.best_bid_price_history > 0])) / y * x
+        return (np.max(self.best_bid_price_history) - np.min(self.best_bid_price_history)) / y * x
+
+    def min_max_ask(self, x, y):
+        return (np.max(self.best_ask_price_history) - np.min(self.best_ask_price_history)) / y * x
+
+    def max_bid(self):
+        return np.max(self.best_bid_price_history)
+
+    def max_ask(self):
+        return np.max(self.best_ask_price_history)
 
     @property
     def time_delta(self):
@@ -384,6 +438,15 @@ class AcReA:
             self.sh_decision_history[:] = self.decision_history[:]
             self.sh_trade_time[:] = self.trade_time[:]
             self.set_slot_position_array()
+
+            # dti = int(datetime.now().timestamp())
+            # a1 = self.sal.get_last_summa(dti)
+            # a2 = self.sal.get_last_summa(dti, -1)
+            # if a1 > self.max_socket_action or a2 > self.max_socket_action:
+            #     self.max_socket_action = np.max([a1, a2, self.max_socket_action])
+            #     self.max_socket_action_dt = datetime.now()
+            # print(self.max_socket_action_dt, self.max_socket_action, a1, a2)
+
             if os.path.exists('./stop.txt'):
                 os.remove('./stop.txt')
                 self.trade_in_progres = False
@@ -508,7 +571,7 @@ class AcReA:
             return True
 
     def buy(self):
-        if not self.check_trade_right():
+        if not self.check_trade_right() or not self.sal.is_trade_allow(int(datetime.now().timestamp())):
             return
 
         if self.socket_counter < self.time_period + self.socket_extra_delay:
@@ -519,7 +582,10 @@ class AcReA:
 
         ask_price_fixed = self.actual_ask_price
         max_buy_base = round(self.slot_position['free_invest_quote'] / ask_price_fixed, 4)
-        calc_qty = round(self.actual_buy_qty_base, 4)
+        if self.slot_position['qty'] == 0:
+            calc_qty = round(self.actual_buy_qty_base * 3, 4)
+        else:
+            calc_qty = round(self.actual_buy_qty_base, 4)
         calc_qty = np.min([max_buy_base, calc_qty])
 
         action_limit_ok = self.is_action_limit_ok()
@@ -609,15 +675,15 @@ class AcReA:
         self.actual_buy_qty_base *= self.buy_multiplier
         self.m_flag = False
 
-    def slot_in_position(self):
-        if self.slot_position['qty'] > 0:
-            return True
-        elif self.slot_position['qty'] == 0:
-            return False
-        else:
-            print("Minusz pozíció!!!!!")
-            # TODO ezt a hibát kezelni kell
-            sys.exit()
+    # def slot_in_position(self):
+    #     if self.slot_position['qty'] > 0:
+    #         return True
+    #     elif self.slot_position['qty'] == 0:
+    #         return False
+    #     else:
+    #         print("Minusz pozíció!!!!!")
+    #         # TODO ezt a hibát kezelni kell
+    #         sys.exit()
 
     @staticmethod
     def get_socket_name(symbol, i_type):
@@ -688,6 +754,7 @@ class AcReA:
             while self.threads_in_progress:
                 res = await tscm.recv()
                 self.socket_counter += 1
+                self.sal.set_action(int(datetime.now().timestamp()))
                 # ntr_nb.add_data(float(res['data']['b']), float(res['data']['a']))
                 # print(res)
                 # symbol = res['stream'].split('@')[0].upper()
@@ -721,9 +788,11 @@ class AcReA:
                                self.add_slow_savgol(),
                                self.set_down())
 
-                # if self.trough_detect(self.sh_smoot_fast_price_history) and self.ddown.any():
-                if self.actual_profile == 1 and self.smoot_fast_price_history[-1] > self.smoot_fast_price_history[-2] and self.ddown.any():
+                #TODO tedd be a speed limit ellenőrzést  a set_down tedd utána azéert hogy bann esetén ki se értékelje
 
+                # if self.trough_detect(self.sh_smoot_fast_price_history) and self.ddown.any():
+                if self.actual_profile == 1 and self.smoot_fast_price_history[-1] > self.smoot_fast_price_history[-2] and self.ddown.any() \
+                        and self.max_ask() - self.min_max_ask(1, 4) > self.actual_ask_price:
                     self.buy()
                 elif self.actual_profile == 2 and \
                         (self.slot_position['income_price'] - self.min_max_bid(self._ipd2_s, self._ipd2_n)) > self.actual_ask_price and \
@@ -834,6 +903,7 @@ class AcReA:
 class Monitor:
 
     def __init__(self, param):
+        self.start_dt = datetime.now()
         self.threads_in_progress = True
         self.stop_flag = param['stop_flag']
         self.name = param['name']
@@ -893,7 +963,7 @@ class Monitor:
                             array3=self.sh_status_array,
                             array4=self.sh_binance_action_limit,
                             array5=self.transfer,
-                            array6=np.array([self.name]),
+                            array6=np.array([self.name, str(self.start_dt)]),
                             )
 
         # print('prc1', psutil.cpu_percent(interval=0.1, percpu=True))
@@ -977,12 +1047,13 @@ if __name__ == '__main__':
     smoot_fast_price_history = Array('f', [0.0] * time_period)
     stop_flag = Array('i', [1])
 
-    # 4 fast30
-    # 3 slow1000
-    # 2 fast1000
-    # 1 slow30
+    # 4 slow300_gap_0_0005
+    # 3 slow500_gap_0_001
+    # 2 slow2000_gap_0_0005
+    # 1 slow1000_gap_0_001 # 3as al egyenlő de 001 a minimum mennyiség (20 dolláros)
 
-    setting = "slow1000"
+    setting = "slow2000_gap_0_0005"
+    print(setting)
     if setting == "slow1000":
         ntick = .5 / 15000
         ddown_state = 8
@@ -1041,6 +1112,80 @@ if __name__ == '__main__':
                   'minimum_buy_qty_base': 0.0005,
                   'buy_multiplier': 1,
                   'trade_profile_limits': [.3, .6],
+                  'time_period': time_period,
+                  'status_array': status_array,
+                  'slot_position_array': slot_position_array,
+                  'binance_action_limit': binance_action_limit,
+                  'trade_time': trade_time,
+                  'best_bid_price_history': best_bid_price_history,
+                  'best_ask_price_history': best_ask_price_history,
+                  'renko_slow_price_history': renko_slow_price_history,
+                  'renko_fast_price_history': renko_fast_price_history,
+                  'renko_stop_price_history': renko_stop_price_history,
+                  'smoot_slow_price_history': smoot_slow_price_history,
+                  'smoot_fast_price_history': smoot_fast_price_history,
+                  'decision_history': decision_history,
+                  'stop_flag': stop_flag,
+
+                  }
+    elif setting == "slow1000_gap":
+        ntick = .5 / 15000
+        ddown_state = 8
+        ddown_multiplier = 1
+        trading_profile = {
+            1: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 4,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (1 * ddown_multiplier),
+                'ddown_depth': -1800,
+                'price_step_delta': 0.000002,
+                'income_price_distance': [0, 0],
+            },
+            2: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 6,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (2 * ddown_multiplier),
+                'ddown_depth': -3500,
+                'price_step_delta': 0.000065,
+                'income_price_distance': [1, 3],
+            },
+            3: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 8,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (3 * ddown_multiplier),
+                'ddown_depth': -3500,
+                'price_step_delta': 0.000025,
+                'income_price_distance': [1, 3],
+            },
+        }
+
+        params = {'simulation': True,
+                  'name': "slow1000_gap",
+                  'cores': cores,
+                  'process': 1,
+                  'base': "BTC",
+                  'quote': "BUSD",
+                  'trading_profile': trading_profile,
+                  'deposit_quote': 1000,
+                  'max_invest_quote': 4000,
+                  'minimum_buy_qty_base': 0.0006,
+                  'buy_multiplier': 1,
+                  'trade_profile_limits': [.6, .8],
                   'time_period': time_period,
                   'status_array': status_array,
                   'slot_position_array': slot_position_array,
@@ -1205,7 +1350,80 @@ if __name__ == '__main__':
                   'stop_flag': stop_flag,
 
                   }
+    elif setting == "slow30_gap":
+        ntick = .5 / 15000
+        ddown_state = 8
+        ddown_multiplier = 1
+        trading_profile = {
+            1: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 4,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (1 * ddown_multiplier),
+                'ddown_depth': -1800,
+                'price_step_delta': 0.000002,
+                'income_price_distance': [0, 0],
+            },
+            2: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 6,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (2 * ddown_multiplier),
+                'ddown_depth': -3500,
+                'price_step_delta': 0.000065,
+                'income_price_distance': [2, 4],
+            },
+            3: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 8,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (3 * ddown_multiplier),
+                'ddown_depth': -3500,
+                'price_step_delta': 0.000095,
+                'income_price_distance': [3, 4],
+            },
+        }
 
+        params = {'simulation': True,
+                  'name': "slow30_gap",
+                  'cores': cores,
+                  'process': 1,
+                  'base': "BTC",
+                  'quote': "BUSD",
+                  'trading_profile': trading_profile,
+                  'deposit_quote': 30,
+                  'max_invest_quote': 220,
+                  'minimum_buy_qty_base': 0.0005,
+                  'buy_multiplier': 1,
+                  'trade_profile_limits': [.3, .6],
+                  'time_period': time_period,
+                  'status_array': status_array,
+                  'slot_position_array': slot_position_array,
+                  'binance_action_limit': binance_action_limit,
+                  'trade_time': trade_time,
+                  'best_bid_price_history': best_bid_price_history,
+                  'best_ask_price_history': best_ask_price_history,
+                  'renko_slow_price_history': renko_slow_price_history,
+                  'renko_fast_price_history': renko_fast_price_history,
+                  'renko_stop_price_history': renko_stop_price_history,
+                  'smoot_slow_price_history': smoot_slow_price_history,
+                  'smoot_fast_price_history': smoot_fast_price_history,
+                  'decision_history': decision_history,
+                  'stop_flag': stop_flag,
+
+                  }
     elif setting == "fast1000":
         ntick = .5 / 15000
         ddown_state = 6
@@ -1264,6 +1482,300 @@ if __name__ == '__main__':
                   'minimum_buy_qty_base': 0.001,
                   'buy_multiplier': 1,
                   'trade_profile_limits': [.3, .6],
+                  'time_period': time_period,
+                  'status_array': status_array,
+                  'slot_position_array': slot_position_array,
+                  'binance_action_limit': binance_action_limit,
+                  'trade_time': trade_time,
+                  'best_bid_price_history': best_bid_price_history,
+                  'best_ask_price_history': best_ask_price_history,
+                  'renko_slow_price_history': renko_slow_price_history,
+                  'renko_fast_price_history': renko_fast_price_history,
+                  'renko_stop_price_history': renko_stop_price_history,
+                  'smoot_slow_price_history': smoot_slow_price_history,
+                  'smoot_fast_price_history': smoot_fast_price_history,
+                  'decision_history': decision_history,
+                  'stop_flag': stop_flag,
+
+                  }
+    elif setting == "slow1000_gap_0_001":
+        ntick = .5 / 15000
+        ddown_state = 8
+        ddown_multiplier = 1
+        trading_profile = {
+            1: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 4,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (1 * ddown_multiplier),
+                'ddown_depth': -1800,
+                'price_step_delta': 0.000002,
+                'income_price_distance': [0, 0],
+            },
+            2: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 6,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (2 * ddown_multiplier),
+                'ddown_depth': -3500,
+                'price_step_delta': 0.000065,
+                'income_price_distance': [1, 3],
+            },
+            3: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 8,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (3 * ddown_multiplier),
+                'ddown_depth': -3500,
+                'price_step_delta': 0.000025,
+                'income_price_distance': [1, 3],
+            },
+        }
+
+        params = {'simulation': True,
+                  'name': "slow1000_gap_0_001",
+                  'cores': cores,
+                  'process': 1,
+                  'base': "BTC",
+                  'quote': "BUSD",
+                  'trading_profile': trading_profile,
+                  'deposit_quote': 1000,
+                  'max_invest_quote': 4000,
+                  'minimum_buy_qty_base': 0.001,
+                  'buy_multiplier': 1,
+                  'trade_profile_limits': [.6, .8],
+                  'time_period': time_period,
+                  'status_array': status_array,
+                  'slot_position_array': slot_position_array,
+                  'binance_action_limit': binance_action_limit,
+                  'trade_time': trade_time,
+                  'best_bid_price_history': best_bid_price_history,
+                  'best_ask_price_history': best_ask_price_history,
+                  'renko_slow_price_history': renko_slow_price_history,
+                  'renko_fast_price_history': renko_fast_price_history,
+                  'renko_stop_price_history': renko_stop_price_history,
+                  'smoot_slow_price_history': smoot_slow_price_history,
+                  'smoot_fast_price_history': smoot_fast_price_history,
+                  'decision_history': decision_history,
+                  'stop_flag': stop_flag,
+
+                  }
+    elif setting == "slow300_gap_0_0005":
+        ntick = .5 / 15000
+        ddown_state = 8
+        ddown_multiplier = 1
+        trading_profile = {
+            1: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 4,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (1 * ddown_multiplier),
+                'ddown_depth': -1800,
+                'price_step_delta': 0.000002,
+                'income_price_distance': [0, 0],
+            },
+            2: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 6,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (2 * ddown_multiplier),
+                'ddown_depth': -3500,
+                'price_step_delta': 0.000065,
+                'income_price_distance': [1, 3],
+            },
+            3: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 8,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (3 * ddown_multiplier),
+                'ddown_depth': -3500,
+                'price_step_delta': 0.000025,
+                'income_price_distance': [1, 3],
+            },
+        }
+
+        params = {'simulation': True,
+                  'name': "slow300_gap_0_0005",
+                  'cores': cores,
+                  'process': 1,
+                  'base': "BTC",
+                  'quote': "BUSD",
+                  'trading_profile': trading_profile,
+                  'deposit_quote': 300,
+                  'max_invest_quote': 1500,
+                  'minimum_buy_qty_base': 0.0005,
+                  'buy_multiplier': 1,
+                  'trade_profile_limits': [.6, .8],
+                  'time_period': time_period,
+                  'status_array': status_array,
+                  'slot_position_array': slot_position_array,
+                  'binance_action_limit': binance_action_limit,
+                  'trade_time': trade_time,
+                  'best_bid_price_history': best_bid_price_history,
+                  'best_ask_price_history': best_ask_price_history,
+                  'renko_slow_price_history': renko_slow_price_history,
+                  'renko_fast_price_history': renko_fast_price_history,
+                  'renko_stop_price_history': renko_stop_price_history,
+                  'smoot_slow_price_history': smoot_slow_price_history,
+                  'smoot_fast_price_history': smoot_fast_price_history,
+                  'decision_history': decision_history,
+                  'stop_flag': stop_flag,
+                  }
+    elif setting == "slow500_gap_0_001":
+        ntick = .5 / 15000
+        ddown_state = 8
+        ddown_multiplier = 1
+        trading_profile = {
+            1: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 4,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (1 * ddown_multiplier),
+                'ddown_depth': -1800,
+                'price_step_delta': 0.000002,
+                'income_price_distance': [0, 0],
+            },
+            2: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 6,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (2 * ddown_multiplier),
+                'ddown_depth': -3500,
+                'price_step_delta': 0.000065,
+                'income_price_distance': [1, 3],
+            },
+            3: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 8,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (3 * ddown_multiplier),
+                'ddown_depth': -3500,
+                'price_step_delta': 0.000025,
+                'income_price_distance': [1, 3],
+            },
+        }
+
+        params = {'simulation': True,
+                  'name': "slow500_gap_0_001",
+                  'cores': cores,
+                  'process': 1,
+                  'base': "BTC",
+                  'quote': "BUSD",
+                  'trading_profile': trading_profile,
+                  'deposit_quote': 500,
+                  'max_invest_quote': 2500,
+                  'minimum_buy_qty_base': 0.001,
+                  'buy_multiplier': 1,
+                  'trade_profile_limits': [.6, .8],
+                  'time_period': time_period,
+                  'status_array': status_array,
+                  'slot_position_array': slot_position_array,
+                  'binance_action_limit': binance_action_limit,
+                  'trade_time': trade_time,
+                  'best_bid_price_history': best_bid_price_history,
+                  'best_ask_price_history': best_ask_price_history,
+                  'renko_slow_price_history': renko_slow_price_history,
+                  'renko_fast_price_history': renko_fast_price_history,
+                  'renko_stop_price_history': renko_stop_price_history,
+                  'smoot_slow_price_history': smoot_slow_price_history,
+                  'smoot_fast_price_history': smoot_fast_price_history,
+                  'decision_history': decision_history,
+                  'stop_flag': stop_flag,
+                  }
+    elif setting == "slow2000_gap_0_0005":
+        ntick = .5 / 15000
+        ddown_state = 8
+        ddown_multiplier = 1
+        trading_profile = {
+            1: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 4,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (1 * ddown_multiplier),
+                'ddown_depth': -1800,
+                'price_step_delta': 0.000001,
+                'income_price_distance': [0, 0],
+            },
+            2: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 6,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (2 * ddown_multiplier),
+                'ddown_depth': -3500,
+                'price_step_delta': 0.000065,
+                'income_price_distance': [1, 3],
+            },
+            3: {
+                'stop_delta': ntick * 3,
+                'trailer_delta': ntick * 1,
+                'take_delta': ntick * 12,
+                'max_time_sec': 60 * 30,
+                'renko_slow_steps': 8,
+                'renko_fast_steps': .5,
+                'renko_stop_steps': .75,
+                'ddown_limit': ddown_state * (3 * ddown_multiplier),
+                'ddown_depth': -3500,
+                'price_step_delta': 0.000025,
+                'income_price_distance': [1, 3],
+            },
+        }
+
+        params = {'simulation': True,
+                  'name': "slow2000_gap_0_0005",
+                  'cores': cores,
+                  'process': 1,
+                  'base': "BTC",
+                  'quote': "BUSD",
+                  'trading_profile': trading_profile,
+                  'deposit_quote': 2000,
+                  'max_invest_quote': 10000,
+                  'minimum_buy_qty_base': 0.0005,
+                  'buy_multiplier': 1.1,
+                  'trade_profile_limits': [.6, .8],
                   'time_period': time_period,
                   'status_array': status_array,
                   'slot_position_array': slot_position_array,
