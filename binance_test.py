@@ -47,7 +47,7 @@ class BTest:
 
         self.count = 0
         self.get_info()
-        # self.buy()
+        self.buy()
         self.sell()
         # self.start_threads()
 

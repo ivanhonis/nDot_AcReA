@@ -15,6 +15,7 @@ import psutil
 import random
 import pyfastcopy
 import shutil
+import webbrowser
 
 np.set_printoptions(threshold=5000)
 # pd.set_option('display.max_rows', None)
@@ -29,10 +30,10 @@ class LOBMonitor:
 
     def __init__(self):
         self.servers = [
-            # {'server_name': "AcReA1",
-            #  'slot': 1},
-            # {'server_name': "AcReA2",
-            #  'slot': 2},
+            {'server_name': "AcReA1",
+             'slot': 1},
+            {'server_name': "AcReA2",
+             'slot': 2},
             {'server_name': "AcReA3",
              'slot': 3},
             # {'server_name': "AcReA4",
@@ -58,6 +59,8 @@ class LOBMonitor:
         self.tc = [[], [], [], [], [], [], [], [], [], [], []]  # connection
 
         # defaults
+        self.start_webbrowser_thread()
+
         for i in range(self.servers_count):
             sid = self.servers[i]['slot']
             self.d[sid]['last_best_bid_price_history'] = 0.0
@@ -88,12 +91,20 @@ class LOBMonitor:
     #     self.task = Thread(target=self.start_async_data_transfer_multy, args=[])
     #     self.task.start()
 
+    def start_webbrowser_thread(self):
+        task = Thread(target=self.start_webbrowser, args=[])
+        task.start()
+
+    def start_webbrowser(self):
+        url = 'https://www.binance.com/en/trade/BTC_BUSD?_from=markets&theme=dark&type=spot'
+        webbrowser.open(url, new=200)
+
     def start_data_read_thread(self, server_id):
         task = Thread(target=self.data_read, args=[server_id])
         task.start()
 
     def start_create_chart_thread(self):
-        sns.set_theme(style="whitegrid", font_scale=.5)
+        sns.set_theme(style="whitegrid", font_scale=.6)
         ani = [[], [], [], [], [], [], [], [], [], [], [], []]
         time.sleep(3)
 
@@ -417,6 +428,7 @@ class LOBMonitor:
                 # print("plot error.")
 
 if __name__ == '__main__':
+
     n_tob = LOBMonitor()
 
     while True:
