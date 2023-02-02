@@ -12,5 +12,6 @@ os.system("pip install scipy")
 os.system("pip install numba")
 os.system("pip install psutil")
 os.system("chmod +x arun.sh")
+os.system("chmod +x grun.sh")
 os.system("chmod +x akill.sh")
 

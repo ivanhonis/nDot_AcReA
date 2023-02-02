@@ -32,12 +32,12 @@ class LOBMonitor:
         self.servers = [
             {'server_name': "AcReA1",
              'slot': 1},
-            {'server_name': "AcReA2",
-             'slot': 2},
-            {'server_name': "AcReA3",
-             'slot': 3},
-            # {'server_name': "AcReA4",
-            #  'slot': 4},
+            # {'server_name': "AcReA2",
+            #  'slot': 2},
+            # {'server_name': "AcReA3",
+            #  'slot': 3},
+            {'server_name': "AcReA4",
+             'slot': 4},
         ]
         self.servers_count = len(self.servers)
 
@@ -59,7 +59,7 @@ class LOBMonitor:
         self.tc = [[], [], [], [], [], [], [], [], [], [], []]  # connection
 
         # defaults
-        self.start_webbrowser_thread()
+        # self.start_webbrowser_thread()
 
         for i in range(self.servers_count):
             sid = self.servers[i]['slot']
@@ -326,8 +326,8 @@ class LOBMonitor:
                 self.p[sid]['ax11'].xaxis.set_ticks(np.arange(0, self.time_period, 500))
                 self.p[sid]['ax11'].set_facecolor('#efefef')
 
-                self.p[sid]['ax11'].plot(self.xaxis, self.d[sid]['smoot_slow_price_history'], 'k-', linewidth=2)
-                self.p[sid]['ax11'].plot(self.xaxis, self.d[sid]['smoot_fast_price_history'], 'k--', linewidth=1)
+                # self.p[sid]['ax11'].plot(self.xaxis, self.d[sid]['smoot_slow_price_history'], 'k-', linewidth=2)
+                # self.p[sid]['ax11'].plot(self.xaxis, self.d[sid]['smoot_fast_price_history'], 'k--', linewidth=1)
                 self.p[sid]['ax11'].plot(self.xaxis, self.d[sid]['best_ask_price_history'], 'b-', alpha=0.6, linewidth=1)
                 self.p[sid]['ax11'].plot(self.xaxis, self.d[sid]['best_bid_price_history'], 'r-', alpha=0.6, linewidth=1, )
                 # if self.transfer_status['income_price'] != 0:
@@ -344,15 +344,19 @@ class LOBMonitor:
                 self.p[sid]['ax12'].clear()
                 self.p[sid]['ax12'].margins(x=0)
                 self.p[sid]['ax12'].xaxis.set_major_formatter(plt.NullFormatter())
-                if self.d[sid]['slot_position']['income_price'] != 0:
-                    self.d[sid]['ylim_min'] = np.min(self.d[sid]['best_bid_price_history'][self.zoom_part:][self.d[sid]['best_bid_price_history'][self.zoom_part:] > 0]) - .5
-                    self.d[sid]['ylim_max'] = np.max(self.d[sid]['best_ask_price_history'][self.zoom_part:][self.d[sid]['best_ask_price_history'][self.zoom_part:] > 0]) + .5
+                # if self.d[sid]['slot_position']['income_price'] != 0:
+                #     self.d[sid]['ylim_min'] = np.min(self.d[sid]['best_bid_price_history'][self.zoom_part:][self.d[sid]['best_bid_price_history'][self.zoom_part:] > 0]) - .5
+                #     self.d[sid]['ylim_max'] = np.max(self.d[sid]['best_ask_price_history'][self.zoom_part:][self.d[sid]['best_ask_price_history'][self.zoom_part:] > 0]) + .5
+                #
+                #     self.d[sid]['ylim_min'] = np.min([self.d[sid]['ylim_min'], self.d[sid]['slot_position']['stop_price']]) - .5
+                #     self.d[sid]['ylim_max'] = np.max([self.d[sid]['ylim_max'], self.d[sid]['slot_position']['take_price']]) + .5
+                # else:
+                #     self.d[sid]['ylim_min'] = np.min(self.d[sid]['best_bid_price_history'][self.zoom_part:][self.d[sid]['best_bid_price_history'][self.zoom_part:] > 0]) - .5
+                #     self.d[sid]['ylim_max'] = np.max(self.d[sid]['best_ask_price_history'][self.zoom_part:][self.d[sid]['best_ask_price_history'][self.zoom_part:] > 0]) + .5
 
-                    self.d[sid]['ylim_min'] = np.min([self.d[sid]['ylim_min'], self.d[sid]['slot_position']['stop_price']]) - .5
-                    self.d[sid]['ylim_max'] = np.max([self.d[sid]['ylim_max'], self.d[sid]['slot_position']['take_price']]) + .5
-                else:
-                    self.d[sid]['ylim_min'] = np.min(self.d[sid]['best_bid_price_history'][self.zoom_part:][self.d[sid]['best_bid_price_history'][self.zoom_part:] > 0]) - .5
-                    self.d[sid]['ylim_max'] = np.max(self.d[sid]['best_ask_price_history'][self.zoom_part:][self.d[sid]['best_ask_price_history'][self.zoom_part:] > 0]) + .5
+                self.d[sid]['ylim_min'] = np.min(self.d[sid]['best_bid_price_history'][self.zoom_part:][self.d[sid]['best_bid_price_history'][self.zoom_part:] > 0]) - .5
+                self.d[sid]['ylim_max'] = np.max(self.d[sid]['best_ask_price_history'][self.zoom_part:][self.d[sid]['best_ask_price_history'][self.zoom_part:] > 0]) + .5
+
 
                 self.p[sid]['ax12'].set_ylim([self.d[sid]['ylim_min'], self.d[sid]['ylim_max']])
                 self.p[sid]['ax12'].ticklabel_format(axis='y', style='sci', useOffset=False)
@@ -366,12 +370,12 @@ class LOBMonitor:
 
                 self.p[sid]['ax12'].plot(self.xaxis_zoom, self.d[sid]['best_ask_price_history'][self.zoom_part:], 'b-', alpha=0.6, linewidth=1)
                 self.p[sid]['ax12'].plot(self.xaxis_zoom, self.d[sid]['best_bid_price_history'][self.zoom_part:], 'r-', alpha=0.6, linewidth=1, )
-                if self.d[sid]['slot_position']['income_price'] != 0:
-                    self.p[sid]['ax12'].plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.d[sid]['slot_position']['income_price']), 'b-', alpha=1, linewidth=2, )
-                    self.p[sid]['ax12'].plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.d[sid]['slot_position']['stop_price']), 'r-', alpha=1, linewidth=2, )
-                    self.p[sid]['ax12'].plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.d[sid]['slot_position']['trailer_stop_price']), 'y--', alpha=1, linewidth=2, )
-                    self.p[sid]['ax12'].plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.d[sid]['slot_position']['trailer_minimum_price']), 'c--', alpha=1, linewidth=2, )
-                    self.p[sid]['ax12'].plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.d[sid]['slot_position']['take_price']), 'y-', alpha=1, linewidth=2, )
+                # if self.d[sid]['slot_position']['income_price'] != 0:
+                #     self.p[sid]['ax12'].plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.d[sid]['slot_position']['income_price']), 'b-', alpha=1, linewidth=2, )
+                #     self.p[sid]['ax12'].plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.d[sid]['slot_position']['stop_price']), 'r-', alpha=1, linewidth=2, )
+                #     self.p[sid]['ax12'].plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.d[sid]['slot_position']['trailer_stop_price']), 'y--', alpha=1, linewidth=2, )
+                #     self.p[sid]['ax12'].plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.d[sid]['slot_position']['trailer_minimum_price']), 'c--', alpha=1, linewidth=2, )
+                #     self.p[sid]['ax12'].plot(self.xaxis_zoom, np.full(abs(self.zoom_part), self.d[sid]['slot_position']['take_price']), 'y-', alpha=1, linewidth=2, )
 
                 self.p[sid]['ax12'].legend(['sm slow', 'sm fast', 'rs slow', 'rf fast', 'ask', 'bid'], loc=2)
 
