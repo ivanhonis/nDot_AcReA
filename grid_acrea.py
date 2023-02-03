@@ -1,8 +1,8 @@
-import sys
+# import sys
 import time
 import os
 # import pickle
-from datetime import datetime, timedelta
+from datetime import datetime
 # import psutil
 
 # from numba import int32, types, typed
@@ -32,11 +32,12 @@ np.set_printoptions(threshold=5000)
 
 
 class SocketActionLimit:
-    # market sebesség mérő
+    # market sebeség mérő
 
-    def __init__(self, t_period, extra_time):
-        self.time_period = t_period
+    def __init__(self, time_period, extra_time):
+        self.time_period = time_period
         self.extra_time = extra_time
+        # self.socket_action = typed.Dict.empty(*time_dict_type)
         self.socket_action = {}
         self.trade_allowe_timestamp = 0
         self.trade_ban = 60 * 6  # sec
@@ -146,7 +147,7 @@ class BinanceActionLimit:
         else:
             orders_1 = np.sum(self.order_reg[back_order_limit_1_sec:sec + 1])
 
-        orders_2 = np.sum(self.order_reg[0:sec + 1]) + np.sum(self.order_reg_yesterday[86400-(86400-sec):-1])
+        orders_2 = np.sum(self.order_reg[0:sec + 1]) + np.sum(self.order_reg_yesterday[86400 - (86400 - sec):-1])
 
         if requests < self.request_limit_action and orders_1 < self.order_limit_1_action and orders_2 < self.order_limit_2_action:
             return True
@@ -161,8 +162,8 @@ class TradeRegister:
         self.qty_arr = np.array([], dtype=np.float32)
 
     def add_trade(self, qty, price):
-        self.price_arr = np.append(self.price_arr, [price], axis=0)
-        self.qty_arr = np.append(self.qty_arr, [qty], axis=0)
+        self.price_arr = np.append(self.price_arr, np.array([float(price)]), axis=0)
+        self.qty_arr = np.append(self.qty_arr, np.array([float(qty)]), axis=0)
 
     def get_qty(self, price, spread=0):
         index = np.where(self.price_arr < price - spread)[0]
@@ -185,25 +186,51 @@ class TradeRegister:
         v = np.sum(self.price_arr * self.qty_arr)
         return v
 
+    def get_max_price(self):
+        return np.max(self.price_arr, initial=0.0)
+
+    def get_min_price(self):
+        return np.min(self.price_arr, initial=10000000.0)
+
     def get_total_qty(self):
         v = np.sum(self.qty_arr)
         return float(v)
 
 
-class GridAcReA:
+class Grid_AcReA:
     def __init__(self, param):
+        self.name = param['name']
         self.stop_flag = param['stop_flag']
         self.back_length = param['back_length']
         self.round_block = param['round_block']
+
+        self.sh_riport0 = param['riport0']
+        self.sh_riport1 = param['riport1']
+        self.sh_riport2 = param['riport2']
+        self.sh_riport3 = param['riport3']
+        self.sh_riport4 = param['riport4']
+        self.sh_riport5 = param['riport5']
+        self.sh_riport6 = param['riport6']
+        self.sh_riport7 = param['riport7']
+        self.sh_riport8 = param['riport8']
+        self.sh_riport9 = param['riport9']
+
         self.trade_in_progres = True
         self.threads_in_progress = True
 
-        self.sh_status_array = param['status_array']
         self.simulation = param['simulation']
+
+        self.status = {'profit': 0.0,
+                       'turnover': 0.0,
+                       'max_qty': 0.0,
+                       'max_drawdown': 0.0,
+                       'simulation': self.simulation,
+                       }
+
         self.reg_trading_mode()
 
         self.time_period = param['time_period']
-        self.sal = SocketActionLimit(t_period=5000, extra_time=0)
+        self.sal = SocketActionLimit(time_period=5000, extra_time=0)
         self.tr = TradeRegister()
         self.max_socket_action = 0
         self.max_socket_action_dt = datetime.now()
@@ -212,11 +239,10 @@ class GridAcReA:
         self.server_start_dt = datetime.now()
         time.sleep(1)  # azért, hogy elkerüljem a nullával való osztátst, mert a profitot eltelt másodpercre számolom
 
-        self.sh_trade_time = param['trade_time']  # az utolsó 100 kötés sebességét eltáromol
         self.trade_time = np.array([0] * 100, dtype=np.int32)
 
         self.bal = BinanceActionLimit()
-        self.binance_action_limit = param['binance_action_limit']
+        # self.binance_action_limit = param['binance_action_limit']
 
         self.commission_alert = 0  # az utolsó ügyletnél felszámításra került comisson akkor annak értéke ide kerül,
 
@@ -231,9 +257,9 @@ class GridAcReA:
         self.minimum_buy_qty_base = float(param['minimum_buy_qty_base'])
         self.start_buy_qty_base = self.minimum_buy_qty_base
         self.actual_buy_qty_base = self.start_buy_qty_base
-        self.buy_multiplier = float(param['buy_multiplier'])
+        # self.buy_multiplier = float(param['buy_multiplier'])
 
-        # self.trade_profile_limits = np.array(param['trade_profile_limits'])  # a befektetésével (beáramlásával) állítja a profil szintek (%)
+        self.trade_profile_limits = np.array(param['trade_profile_limits'])  # a befektetésével (beáramlásával) állítja a profil szintek (%)
 
         self.api_key = "sNtEg0vnKFm09xKf8v9VJWIYspFFouJN5vJO9bSgUSAU8eoAUa5OaMuJYLLsuswr"
         self.api_secret = "Hhu6MPTOdEKBjZyooPr1JxbgiLME3VFJdymqJrtytrMywKatP08Y5G1Sb9ZuJv4S"
@@ -247,33 +273,20 @@ class GridAcReA:
         self.bm_stopper = None
         self.ts_stopper = None
 
+        self.slot = {
+            'start_delta': [0, 0],
+        }
+
+        self.trading_profile = param['trading_profile']
+
         self.slot_position = {'qty': 0.0,
                               'income_price': 0.0,
                               'free_invest_quote': self.max_invest_quote,
-                              'actual_value': 0.0,
+                              'actual_pnl': 0.0,
+                              'actual_profile': 0,
                               'last_buy_price': 100000000.0,
                               'exit_value': 0.0,
                               }
-
-        self.slot_position_index = {'qty': 0,
-                                    'income_price': 1,
-                                    'free_invest_quote': 2,
-                                    # 'stop_price': 3,
-                                    # 'trailer_stop_price': 4,
-                                    # 'trailer_minimum_price': 5,
-                                    # 'take_price': 6,
-                                    'actual_value': 7,
-                                    # 'actual_profile': 8,
-                                    'last_buy_price': 9,
-                                    'exit_value': 10,
-                                    }
-
-        # két esetben direkt címzem (4,7) a többi esetben set_slot_position_array használom
-        # két esetben számít a sebesség
-
-        self.sh_slot_position_array = param['slot_position_array']
-
-        # self.slot_position_array = np.array([0.0] * 10, dtype=np.float32)
 
         # utolsó ismert orderbook legjobb adatai
         # ez kell a buy és a stop hoz
@@ -292,32 +305,23 @@ class GridAcReA:
         self.sh_uniform_bid_price_history = param['uniform_bid_price_history']
         self.sh_uniform_ask_price_history = param['uniform_ask_price_history']
 
+        self.sh_value_history = param['value_history']
+        # kezdő értéknek megkapja a maxi invest quote-ot
+        self.sh_value_history[:] = np.array([self.deposit_quote] * self.time_period)[:]
+
         self.decision_neutral = 0
         self.decision_long = 500
         self.decision_stop = -500
+        # self.decision_buy_again = 250
 
         self.decision_history = np.array([0] * self.time_period, dtype=np.int32)
         self.sh_decision_history = param['decision_history']
 
-        self.transfer = np.empty((11, self.time_period))
-        self.transfer_status = np.empty(10)
-
         self.monitor_max_qty = 0.0
-        self.monitor_min_value = 0.0
-        self.status_array_index = {
-                                   # 'stop': 0,
-                                   # 'buy_again': 1,
-                                   # 'take': 2,
-                                   # 'trailer': 3,
-                                   # 'time': 4,
-                                   'profit': 5,
-                                   'turnover': 6,
-                                   'max_qty': 7,
-                                   'min_value': 8,
-                                   }
+        self.max_drawdown = 0.0
 
-        # self.actual_profile = 1
-        # self.set_profile(1, direct=True)
+        self.actual_profile = 0
+        self.change_profile(1)
 
         self.start_threads()
 
@@ -340,46 +344,30 @@ class GridAcReA:
             print("AcReA in REAL TRADING mode!")
 
         # egyéb státusz elemk regisztrálása
-        if self.simulation:
-            self.sh_status_array[10] = 1
-        else:
-            self.sh_status_array[10] = 0
-
-    # def min_max_bid(self, x, y):
-    #     return (np.max(self.best_bid_price_history) - np.min(self.best_bid_price_history)) / y * x
-    #
-    # def min_max_ask(self, x, y):
-    #     return (np.max(self.best_ask_price_history) - np.min(self.best_ask_price_history)) / y * x
-    #
-    # def max_bid(self):
-    #     return np.max(self.best_bid_price_history)
-    #
-    # def max_ask(self):
-    #     return np.max(self.best_ask_price_history)
+        self.status['simulation'] = True if self.simulation else False
 
     @property
     def time_delta(self):
         return int((datetime.now() - self.server_start_dt).total_seconds())
 
-    def set_slot_position_array(self):
-        for key in self.slot_position:
-            if key in self.slot_position_index:
-                self.sh_slot_position_array[int(self.slot_position_index[key])] = float(self.slot_position[key])
-
-    def status(self, name, value, static=False):
+    def set_status(self, name, value, static=False):
         if static:
-            self.sh_status_array[self.status_array_index[name]] = value
+            self.status[name] = value
         else:
-            self.sh_status_array[self.status_array_index[name]] += value
+            self.status[name] += value
 
         # egyéb státusz elemk regisztrálása
-        if self.simulation:
-            self.sh_status_array[10] = 1
-        else:
-            self.sh_status_array[10] = 0
+        self.status['simulation'] = True if self.simulation else False
 
         # profitot számolja ki
-        self.sh_status_array[9] = round(self.sh_status_array[5] / self.time_delta * (24*60*60*365) / self.deposit_quote, 4)
+        # self.status_array['profit'] = round(self.status_array[5] / self.time_delta * (24 * 60 * 60 * 365) / self.deposit_quote, 4)
+
+    def change_profile(self, p):
+        if p != self.actual_profile:
+            self.slot['start_delta'] = self.trading_profile[p]['start_delta']
+            self.actual_profile = int(p)
+            self.slot_position['actual_profile'] = int(p)
+            # self.set_slot_position_array()
 
     def start_threads(self):
         task1 = Thread(target=self.bookticker_stopper, args=[])
@@ -398,29 +386,103 @@ class GridAcReA:
         task2.join()
         task2.join()
 
+    def get_actual_value(self):
+        qty = round(self.slot_position['qty'], 8)
+        free_invest_quote = round(self.slot_position['free_invest_quote'], 4)
+        return round((self.actual_bid_price * qty) + free_invest_quote, 8)
+
+    # Riport
+
+    def get_riport_basic_str(self):
+        simulation = 'Simulation  ' if self.simulation else ''
+        r_str = f"{simulation}{self.name}   Start: {self.server_start_dt}    Symbol: {self.symbol}    Deposit: {self.deposit_quote}   Max_invest: {self.max_invest_quote}" \
+                f"   Buy_qty:{self.minimum_buy_qty_base}"
+        return r_str
+
+    def get_riport_profit_str(self):
+        act_value = self.get_actual_value()
+        real_pnl = round(act_value - self.max_invest_quote, 8)
+        real_yield = round(real_pnl / self.time_delta * (24 * 60 * 60 * 365) / self.deposit_quote, 4)
+        free_invest_quote = round(self.slot_position['free_invest_quote'], 4)
+        realised_profit = self.status['profit']
+        r_str = f"P&L: {real_pnl}  Yield (annual): {real_yield} %   Realised P&L: {realised_profit}   Value: {act_value}   Free_invest: {free_invest_quote}"
+        return r_str
+
+    def get_riport_position_str(self):
+        qty = round(self.slot_position['qty'], 8)
+        actual_profile = self.slot_position['actual_profile']
+        lastp = round(self.slot_position['last_buy_price'], 8)
+        minp = round(self.tr.get_min_price(), 8)
+        maxp = round(self.tr.get_max_price(), 8)
+        r_str = f"Qty: {qty}   last_p.: {lastp}   min_p.: {minp}   max_p.: {maxp}   act._profile: {actual_profile}"
+        return r_str
+
+    def get_riport_limit_str(self):
+        t = datetime.now().time()
+        sec = (t.hour * 60 + t.minute) * 60 + t.second
+        blocked_actions = self.bal.get_blocked_actions()
+        sum_orders24 = self.bal.get_sum_orders24(sec)
+        max_order = self.bal.get_max_order()
+        max_request = self.bal.get_max_request()
+
+        r_str = f"Blocked actions: {blocked_actions}     Sum_orders24 (160000 / 24h): {sum_orders24}     max_order (50 / 10 sec): {max_order}    " \
+                f"Max request (1200 / 60 sec): {max_request}   "
+        return r_str
+
+    def get_riport_status_str(self):
+        monitor_turnover = round(float(self.status['turnover']), 2)
+        monitor_max_qty = round(float(self.status['max_qty']), 6)
+        monitor_min_value = round(float(self.status['max_drawdown']), 2)
+        r_str = f"Turn_over: {monitor_turnover} USD   Max.qty: {monitor_max_qty} BTC   Max.DD: {monitor_min_value} USD"
+        return r_str
+
+    def get_riport_trade_time_str(self):
+        min_tr = np.min(self.trade_time[self.trade_time > 0], initial=1000000)
+        max_tr = np.max(self.trade_time[self.trade_time > 0], initial=0)
+        if self.trade_time[self.trade_time > 0].shape[0] > 0:
+            avg_tr = np.mean(self.trade_time[self.trade_time > 0])
+        else:
+            avg_tr = 0
+        r_str = f"Min_trade_time: {min_tr} ms   Max_trade_time: {max_tr} ms    Avg_trade_time: {avg_tr} ms"
+        return r_str
+
+    @staticmethod
+    def fix_size(text, size=200):
+        space = ' ' * 200
+        text = text + space
+        text = text[:size]
+        return bytes(text, 'utf-8')
+
     def data_transfer(self):
+
         while self.threads_in_progress:
             self.sh_best_bid_price_history[:] = self.best_bid_price_history[:]
             self.sh_best_ask_price_history[:] = self.best_ask_price_history[:]
             self.sh_uniform_bid_price_history[:] = self.uniform_bid_price_history[:]
             self.sh_uniform_ask_price_history[:] = self.uniform_ask_price_history[:]
             self.sh_decision_history[:] = self.decision_history[:]
-            self.sh_trade_time[:] = self.trade_time[:]
-            self.set_slot_position_array()
+            # self.sh_trade_time[:] = self.trade_time[:]
 
-            # dti = int(datetime.now().timestamp())
-            # a1 = self.sal.get_last_summa(dti)
-            # a2 = self.sal.get_last_summa(dti, -1)
-            # if a1 > self.max_socket_action or a2 > self.max_socket_action:
-            #     self.max_socket_action = np.max([a1, a2, self.max_socket_action])
-            #     self.max_socket_action_dt = datetime.now()
-            # print(self.max_socket_action_dt, self.max_socket_action, a1, a2)
+            # a pnl rávetítem a önerőre
+            own_value = round(self.get_actual_value() - self.max_invest_quote, 8) + self.deposit_quote
+            self.sh_value_history[:-1] = self.sh_value_history[1:]
+            self.sh_value_history[-1] = own_value
+
+            self.sh_riport0[:] = self.fix_size(self.get_riport_basic_str())[:]
+            self.sh_riport1[:] = self.fix_size(self.get_riport_profit_str())[:]
+            self.sh_riport2[:] = self.fix_size(self.get_riport_position_str())[:]
+            self.sh_riport3[:] = self.fix_size(self.get_riport_limit_str())[:]
+            self.sh_riport4[:] = self.fix_size(self.get_riport_status_str())[:]
+            self.sh_riport5[:] = self.fix_size(self.get_riport_trade_time_str())[:]
+
+            # amennyiben az ár vétel vagy eladás nélkül emelkedik itt átállítódik
+            self.set_profile()
 
             if os.path.exists('./stop.txt'):
                 os.remove('./stop.txt')
                 self.trade_in_progres = False
             else:
-                time.sleep(2)
+                time.sleep(3)
 
     def bookticker_stopper(self):
         loop = asyncio.new_event_loop()
@@ -438,10 +500,6 @@ class GridAcReA:
         t = datetime.now().time()
         sec = (t.hour * 60 + t.minute) * 60 + t.second
         self.bal.reg_order_action(sec)
-        self.binance_action_limit[0] = self.bal.get_blocked_actions()
-        self.binance_action_limit[1] = self.bal.get_sum_orders24(sec)
-        self.binance_action_limit[2] = self.bal.get_max_order()
-        self.binance_action_limit[3] = self.bal.get_max_request()
 
     def is_action_limit_ok(self):
         t = datetime.now().time()
@@ -543,6 +601,16 @@ class GridAcReA:
         else:
             return True
 
+    def set_profile(self):
+        # Risk management
+        # az elköltött pénz arányában állítja az aktuális profilt
+        position_value = self.slot_position['qty'] * self.actual_bid_price
+        total_exit_value = self.slot_position['free_invest_quote'] + position_value
+        # a teljes rendelkezésre álló pénz hány százalékát költöttem el
+        invested_ration = position_value / total_exit_value
+        i_profit = np.searchsorted(self.trade_profile_limits, invested_ration) + 1
+        self.change_profile(i_profit)
+
     def buy(self):
 
         # shut down hez kell
@@ -550,7 +618,7 @@ class GridAcReA:
             # or not self.sal.is_trade_allow(int(datetime.now().timestamp())):
             return
 
-        # első 20000 adat megérkezéséig nem kötök
+        # első x ezer adat megérkezéséig nem kötök
         if not self.sal.is_ready_to_start():
             return
 
@@ -558,6 +626,17 @@ class GridAcReA:
         #     return
 
         ask_price_fixed = self.actual_ask_price
+
+        # Risk management
+        if self.tr.get_total_qty() > 0:
+            if self.actual_profile == 1:
+                if ask_price_fixed < self.tr.get_max_price() - self.slot['start_delta'][1]:
+                    return
+            else:
+                if self.tr.get_max_price() - self.slot['start_delta'][0] < ask_price_fixed or\
+                        self.tr.get_max_price() - self.slot['start_delta'][1] > ask_price_fixed:
+                    return
+
         max_buy_base = round(self.slot_position['free_invest_quote'] / ask_price_fixed, 4)
         # if self.slot_position['qty'] == 0:
         #     calc_qty = round(self.actual_buy_qty_base * 3, 4)
@@ -575,37 +654,53 @@ class GridAcReA:
 
             self.tr.add_trade(executed_qty, traded_price)
 
+            # existed_value = self.slot_position['income_price'] * self.slot_position['qty']
+            # existed_value = self.slot_position['income_price'] * self.slot_position['qty']
+            # new_value = calc_qty * ask_price_fixed
+            # new_value = cummulative_quote_qty
+
+            # self.slot_position['qty'] += calc_qty  # new qty
             self.slot_position['qty'] = self.tr.get_total_qty()  # new qty
+            # print("self.slot_position['qty']", self.slot_position['qty'])
             self.slot_position['free_invest_quote'] -= cummulative_quote_qty
             self.monitor_max_qty = np.max([self.monitor_max_qty, self.slot_position['qty']])
-            self.status('max_qty', self.monitor_max_qty, static=True)
-            self.status('turnover', cummulative_quote_qty)
+            self.set_status('max_qty', self.monitor_max_qty, static=True)
+            # self.status('turnover', calc_qty * ask_price_fixed)
+            self.set_status('turnover', cummulative_quote_qty)
+            # self.slot_position['income_price'] = (existed_value + new_value) / self.slot_position['qty']
             self.slot_position['income_price'] = self.tr.get_open_position_income_price()
+            # self.slot_position['last_buy_price'] = ask_price_fixed
             self.slot_position['last_buy_price'] = traded_price
+
+            # Risk management
+            self.set_profile()
+
             self.decision_history[-1] = self.decision_long
-
-            self.set_slot_position_array()
-
             self.reg_order()
 
     def stop(self, message=""):
+        # if self.slot_position['income_price'] > self.actual_bid_price or message != "Time":
         fix_bid_price = self.actual_bid_price
         sell_qty, income_value = self.tr.get_qty(fix_bid_price, spread=0)
         if sell_qty > 0:
-
             executed_qty, cummulative_quote_qty, traded_price = self.order_sell(sell_qty)
             self.tr.remove_qty(fix_bid_price, spread=0)
 
+            # income_value = self.slot_position['qty'] * self.slot_position['income_price']
+            # exit_value = self.slot_position['qty'] * self.actual_bid_price
             exit_value = cummulative_quote_qty
-            self.status('profit', exit_value - income_value)
+            self.set_status('profit', exit_value - income_value)
             self.slot_position['free_invest_quote'] += exit_value
             self.slot_position['qty'] = self.tr.get_total_qty()
             self.slot_position['income_price'] = self.tr.get_open_position_income_price()
-            self.status('turnover', exit_value)
+            self.set_status('turnover', exit_value)
             self.decision_history[-1] = self.decision_stop
             self.actual_buy_qty_base = self.start_buy_qty_base
-            self.set_slot_position_array()
+            self.set_profile()
+            # self.set_profile(1, direct=True)
+            # self.set_slot_position_array()
             self.reg_order()
+            # self.m_flag = False
             self.check_trade_right()
 
     @staticmethod
@@ -667,7 +762,12 @@ class GridAcReA:
         async with self.ts_detect as tscm:
             while self.threads_in_progress:
                 res = await tscm.recv()
+                # self.socket_counter += 1
                 self.sal.set_action(int(datetime.now().timestamp()))
+                # ntr_nb.add_data(float(res['data']['b']), float(res['data']['a']))
+                # print(res)
+                # symbol = res['stream'].split('@')[0].upper()
+                # stype = res['stream'].split('@')[1]
 
                 # {
                 #   "u":400900217,     // order book updateId
@@ -677,7 +777,6 @@ class GridAcReA:
                 #   "a":"25.36520000", // best ask price
                 #   "A":"40.66000000"  // best ask qty
                 # }
-
                 # Detect
 
                 bid = float(res['data']['b'])
@@ -686,6 +785,7 @@ class GridAcReA:
                 # ask_qty = float(res['data']['A'])
                 #
                 self.actual_bid_price = bid
+                # self.actual_bid_qty[symbol] = float(res['data']['B'])
 
                 asyncio.gather(self.add_best_ask_price_history(ask),
                                self.add_best_bid_price_history(bid),
@@ -694,9 +794,17 @@ class GridAcReA:
                 asyncio.gather(self.add_bid_uniform_filter(),
                                self.add_ask_uniform_filter())
 
+                # if not self.sal.is_trade_allow(int(datetime.now().timestamp())):
+                #     continue
+
                 if self.uniform_ask_price_history[-2] < self.uniform_ask_price_history[-1] and self.sal.is_ready_to_start():
+                    # print('------------------------------------------------------')
                     b_value, b_length = self.back_signal(self.uniform_ask_price_history[-3000:-1])
+                    # print('fel', datetime.now().second, b_value, b_length)
+                    # print(self.uniform_ask_price_history[-100:])
+
                     if b_value > self.uniform_ask_price_history[-2] and b_length > self.back_length:
+                        # print('buy', datetime.now().second)
                         self.buy()
 
         await self.async_client_detect.close_connection()
@@ -725,18 +833,34 @@ class GridAcReA:
 
                 self.actual_ask_price = ask
 
-                self.slot_position['actual_value'] = self.slot_position['qty'] * (self.actual_bid_price - self.slot_position['income_price'])
-                self.sh_slot_position_array[7] = self.slot_position['actual_value']
+                # if not self.sal.is_trade_allow(int(datetime.now().timestamp())) and self.slot_position['qty'] > 0:
+                #     self.stop("Stop")
+                #     self.status('stop', 1)
+
+                # self.actual_ask_qty[symbol] = float(res['data']['A'])
+
+                # if self.renko_stop_steps <= abs(self.renko_stop_price_history[-1] - bid):
+                #     self.renko_stop_price_history = np.delete(np.append(self.renko_stop_price_history, [bid], axis=0), 0)
+                # else:
+                #     self.renko_stop_price_history = np.delete(np.append(self.renko_stop_price_history, [self.renko_stop_price_history[-1]], axis=0), 0)
+
+                self.slot_position['actual_pnl'] = self.slot_position['qty'] * (self.actual_bid_price - self.slot_position['income_price'])
+                # self.sh_slot_position_array[7] = self.slot_position['actual_pnl']
                 self.slot_position['exit_value'] = self.slot_position['free_invest_quote'] + (self.slot_position['qty'] * self.actual_bid_price)
 
                 # print(self.slot_position_array)
-                self.monitor_min_value = np.min([self.monitor_min_value, self.slot_position['actual_value']])
-                self.status('min_value', self.monitor_min_value, static=True)
+                self.max_drawdown = np.min([self.max_drawdown, self.slot_position['actual_pnl']])
+                self.set_status('max_drawdown', self.max_drawdown, static=True)
                 # Stopper
 
+                # selected_price = self.renko_stop_price_history[-1]
+                # selected_price = self.actual_bid_price
+
                 if self.uniform_bid_price_history[-2] > self.uniform_bid_price_history[-1] and self.sal.is_ready_to_start():
+                    # print("sell gap")
                     b_value, b_length = self.back_signal(self.uniform_bid_price_history[-3000:-1])
                     if b_value < self.uniform_ask_price_history[-2] and b_length > self.back_length:
+                        # print('sell', datetime.now().second)
                         self.stop()
 
         await self.async_client_stopper.close_connection()
@@ -749,17 +873,26 @@ class Monitor:
         self.threads_in_progress = True
         self.stop_flag = param['stop_flag']
         self.name = param['name']
-        self.sh_trade_time = param['trade_time']
-        self.sh_status_array = param['status_array']
-        self.sh_slot_position_array = param['slot_position_array']
-        self.sh_binance_action_limit = param['binance_action_limit']
 
         self.sh_best_bid_price_history = param['best_bid_price_history']
         self.sh_best_ask_price_history = param['best_ask_price_history']
         self.sh_uniform_bid_price_history = param['uniform_bid_price_history']
         self.sh_uniform_ask_price_history = param['uniform_ask_price_history']
-
         self.sh_decision_history = param['decision_history']
+        self.sh_value_history = param['value_history']
+
+        self.sh_riport0 = param['riport0']
+        self.sh_riport1 = param['riport1']
+        self.sh_riport2 = param['riport2']
+        self.sh_riport3 = param['riport3']
+        self.sh_riport4 = param['riport4']
+        self.sh_riport5 = param['riport5']
+        self.sh_riport6 = param['riport6']
+        self.sh_riport7 = param['riport7']
+        self.sh_riport8 = param['riport8']
+        self.sh_riport9 = param['riport9']
+
+        self.riports = []
 
         self.time_period = param['time_period']
 
@@ -774,56 +907,28 @@ class Monitor:
 
         self.transfer[0][:] = np.array(self.sh_best_bid_price_history[:])
         self.transfer[1][:] = np.array(self.sh_best_ask_price_history[:])
-        self.transfer[5][:] = np.array(self.sh_uniform_bid_price_history[:])
-        self.transfer[6][:] = np.array(self.sh_uniform_ask_price_history[:])
-        self.transfer[7][:] = np.array(self.sh_decision_history[:])
+        self.transfer[2][:] = np.array(self.sh_uniform_bid_price_history[:])
+        self.transfer[3][:] = np.array(self.sh_uniform_ask_price_history[:])
+        self.transfer[4][:] = np.array(self.sh_decision_history[:])
+        self.transfer[5][:] = np.array(self.sh_value_history[:])
+
+        self.riports = [
+            self.sh_riport0[:],
+            self.sh_riport1[:],
+            self.sh_riport2[:],
+            self.sh_riport3[:],
+            self.sh_riport4[:],
+            self.sh_riport5[:],
+            self.sh_riport6[:],
+            self.sh_riport7[:],
+            self.sh_riport8[:],
+            self.sh_riport9[:],
+        ]
 
         np.savez_compressed("./sync_local/transfer_all.npz",
-                            array1=self.sh_slot_position_array,
-                            array2=self.sh_trade_time,
-                            array3=self.sh_status_array,
-                            array4=self.sh_binance_action_limit,
-                            array5=self.transfer,
-                            array6=np.array([self.name, str(self.start_dt)]),
+                            array1=self.transfer,
+                            array2=self.riports,
                             )
-
-        # print('prc1', psutil.cpu_percent(interval=0.1, percpu=True))
-        # print('prc4', psutil.cpu_percent(interval=4, percpu=True))
-
-    # def print_data(self):
-    #     print(self.sh_best_bid_price_history[:][-100:])
-    #
-    #     slot_position_dict = {'qty': round(self.sh_slot_position_array[0], 8),
-    #                           'income_price': round(self.sh_slot_position_array[1], 8),
-    #                           'free_invest_quote': round(self.sh_slot_position_array[2], 8),
-    #                           'stop_price': round(self.sh_slot_position_array[3], 8),
-    #                           'trailer_stop_price': round(self.sh_slot_position_array[4], 8),
-    #                           'trailer_minimum_price': round(self.sh_slot_position_array[5], 8),
-    #                           'take_price': round(self.sh_slot_position_array[6], 8),
-    #                           'actual_value_quote': round(self.sh_slot_position_array[7], 8),
-    #                           'actual_profile': round(self.sh_slot_position_array[8], 8),
-    #                           'last_buy_price': round(self.sh_slot_position_array[9], 8),
-    #                           }
-    #
-    #     status_array_dict = {'stop': int(self.sh_status_array[0]),
-    #                          'buy_again': int(self.sh_status_array[1]),
-    #                          'take': int(self.sh_status_array[2]),
-    #                          'trailer': int(self.sh_status_array[3]),
-    #                          'time': int(self.sh_status_array[4]),
-    #                          'profit': round(self.sh_status_array[5], 8),
-    #                          'turnover': round(self.sh_status_array[6], 8),
-    #                          'max_qty': round(self.sh_status_array[7], 8),
-    #                          'min_value_qoute': round(self.sh_status_array[8], 8)
-    #                          }
-    #
-    #     print(slot_position_dict)
-    #     print(status_array_dict)
-    #
-    #     print("    get_blocked_actions total", self.sh_binance_action_limit[0])
-    #     print("get_sum_orders24 160000 / 24h", self.sh_binance_action_limit[1])
-    #     print("     get_max_order 50 / 10sec", self.sh_binance_action_limit[2])
-    #     print(" get_max_request 1200 / 60sec", self.sh_binance_action_limit[3])
-    #     print(self.sh_trade_time[:])
 
     def data_manager(self):
         while self.threads_in_progress:
@@ -834,7 +939,6 @@ class Monitor:
             self.data_transfer()
 
         print('Monitor shutdown.')
-        # self.print_data()
 
 
 # __main__
@@ -842,7 +946,7 @@ if __name__ == '__main__':
     path = "./venv/"
     if os.path.exists(path):
         print('Local running?')
-        sys.exit()
+        # sys.exit()
 
     cores = cpu_count()
     running_processes = []
@@ -853,27 +957,48 @@ if __name__ == '__main__':
 
     time_period = 20000
 
-    status_array = Array('f', [0.0] * 11)
-    slot_position_array = Array('f', [0.0] * 11)
-    binance_action_limit = Array('i', [0] * 4)
-    trade_time = Array('i', [0] * 100)
-    decision_history = Array('i', [0] * time_period)
+    riport_len = 200
+    riport0 = Array('c', b'0' * riport_len)
+    riport1 = Array('c', b'0' * riport_len)
+    riport2 = Array('c', b'0' * riport_len)
+    riport3 = Array('c', b'0' * riport_len)
+    riport4 = Array('c', b'0' * riport_len)
+    riport5 = Array('c', b'0' * riport_len)
+    riport6 = Array('c', b'0' * riport_len)
+    riport7 = Array('c', b'0' * riport_len)
+    riport8 = Array('c', b'0' * riport_len)
+    riport9 = Array('c', b'0' * riport_len)
 
     best_bid_price_history = Array('f', [0.0] * time_period)
     best_ask_price_history = Array('f', [0.0] * time_period)
     uniform_bid_price_history = Array('f', [0.0] * time_period)
     uniform_ask_price_history = Array('f', [0.0] * time_period)
+    decision_history = Array('i', [0] * time_period)
+    value_history = Array('f', [0.0] * time_period)
+
     stop_flag = Array('i', [1])
 
-    # 4
-    # 3
-    # 2
-    # 1
+    # 4 slow2000_.003_1_220_60*6 # egyből zát ha 220 felé megy
+    # 3 slow30 270/60 220/120 tiltás
+    # 2 slow2000_gap_0_0012_kaiser_125 275/60 * 30 tiltás
+    # 1 slow2000_gap_0_0012_kaiser_125 220/120 tiltás
 
     setting = "slow1000"
     print(setting)
     params = {}
     if setting == "slow1000":
+        trading_profile = {
+            1: {
+                'start_delta': [0, 500],  # BUSD
+            },
+            2: {
+                'start_delta': [500, 1000],  # BUSD
+            },
+            3: {
+                'start_delta': [1000, 1500],  # BUSD
+            },
+        }
+
         params = {'simulation': True,
                   'name': "slow1000",
                   'cores': cores,
@@ -883,24 +1008,33 @@ if __name__ == '__main__':
                   'deposit_quote': 1000,
                   'max_invest_quote': 4000,
                   'minimum_buy_qty_base': 0.001,
+                  'trade_profile_limits': [.33, .66],
+                  'trading_profile': trading_profile,
                   'back_length': 25,
                   'round_block': 1.25,
-                  'buy_multiplier': 1,
+                  # 'buy_multiplier': 1,
                   'time_period': time_period,
-                  'status_array': status_array,
-                  'slot_position_array': slot_position_array,
-                  'binance_action_limit': binance_action_limit,
-                  'trade_time': trade_time,
                   'best_bid_price_history': best_bid_price_history,
                   'best_ask_price_history': best_ask_price_history,
                   'uniform_bid_price_history': uniform_bid_price_history,
                   'uniform_ask_price_history': uniform_ask_price_history,
                   'decision_history': decision_history,
+                  'value_history': value_history,
                   'stop_flag': stop_flag,
+                  'riport0': riport0,
+                  'riport1': riport1,
+                  'riport2': riport2,
+                  'riport3': riport3,
+                  'riport4': riport4,
+                  'riport5': riport5,
+                  'riport6': riport6,
+                  'riport7': riport7,
+                  'riport8': riport8,
+                  'riport9': riport9,
 
                   }
 
-    n_acrea = GridAcReA
+    n_acrea = Grid_AcReA
     process1 = Process(target=n_acrea, args=(params,))
     process1.start()
 
@@ -910,16 +1044,23 @@ if __name__ == '__main__':
                'base': "BTC",
                'quote': "USDT",
                'time_period': time_period,
-               'status_array': status_array,
-               'slot_position_array': slot_position_array,
-               'binance_action_limit': binance_action_limit,
-               'trade_time': trade_time,
                'best_bid_price_history': best_bid_price_history,
                'best_ask_price_history': best_ask_price_history,
                'uniform_bid_price_history': uniform_bid_price_history,
                'uniform_ask_price_history': uniform_ask_price_history,
                'decision_history': decision_history,
+               'value_history': value_history,
                'stop_flag': stop_flag,
+               'riport0': riport0,
+               'riport1': riport1,
+               'riport2': riport2,
+               'riport3': riport3,
+               'riport4': riport4,
+               'riport5': riport5,
+               'riport6': riport6,
+               'riport7': riport7,
+               'riport8': riport8,
+               'riport9': riport9,
 
                }
 
