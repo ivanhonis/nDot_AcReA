@@ -30,12 +30,12 @@ class LOBMonitor:
 
     def __init__(self):
         self.servers = [
-            # {'server_name': "AcReA1",
-            #  'slot': 1},
-            # {'server_name': "AcReA2",
-            #  'slot': 2},
-            # {'server_name': "AcReA3",
-            #  'slot': 3},
+            {'server_name': "AcReA1",
+             'slot': 1},
+            {'server_name': "AcReA2",
+             'slot': 2},
+            {'server_name': "AcReA3",
+             'slot': 3},
             {'server_name': "AcReA4",
              'slot': 4},
         ]
@@ -211,18 +211,14 @@ class LOBMonitor:
             self.p[sid]['ax14'].clear()
             self.p[sid]['ax14'].grid(color='#666666', linestyle='', linewidth=0)
 
-            # if self.d[sid]['status']['simulation'] == 1:
-            #     self.p[sid]['ax14'].set_facecolor('#666666')
-            # else:
-            #     self.p[sid]['ax14'].set_facecolor('#AB6A6E')
-            self.p[sid]['ax14'].set_facecolor('#666666')
+            if self.d[sid]['riport0'][0:10] == "Simulation":
+                self.p[sid]['ax14'].set_facecolor('#666666')
+            else:
+                self.p[sid]['ax14'].set_facecolor('#AB6A6E')
 
-            # self.ax14.margins(x=0)
-            # self.ax14.set_ylim(100, 800)
             self.p[sid]['ax14'].get_yaxis().set_ticks([])
             self.p[sid]['ax14'].xaxis.set_major_formatter(plt.NullFormatter())
-            # self.p[sid]['ax14'].spines['bottom'].set_visible(False)
-            # self.ax14.xaxis.set_ticks(np.arange(0, self.time_period, 500))
+
             x = .17
             s1 = .1
             s2 = s1 + x
@@ -300,42 +296,6 @@ class LOBMonitor:
 
             self.p[sid]['ax12'].legend(['sm slow', 'sm fast', 'rs slow', 'rf fast', 'ask', 'bid'], loc=2)
 
-            # # print(self.ylim_min, self.ylim_max)
-            # # self.ax1.plot(x, y_bid)
-            # self.ax12.clear()
-            # self.ax12.margins(x=0.01)
-            # self.ax12.get_yaxis().set_ticks([])
-            #
-            # self.market_speed_array[self.market_speed_array > 400] = 400
-            # self.market_speed_array_avg[self.market_speed_array_avg > 400] = 400
-            # # avg1 = np.mean(self.market_speed_array)
-            # self.market_speed_array[self.market_speed_array == 0] = np.min(self.market_speed_array[self.market_speed_array > 0])
-            # # avg2 = np.mean(self.market_speed_array_avg)
-            # self.market_speed_array_avg[self.market_speed_array_avg == 0] = np.min(self.market_speed_array_avg[self.market_speed_array_avg > 0])
-
-            # self.ax12.xaxis.set_ticks(np.arange(0, self.time_period, 500))
-            # self.ax12.plot(self.xaxis, self.market_speed_array, 'y-', alpha=0.9, linewidth=2)
-            # self.ax12.plot(self.xaxis, self.market_speed_array_avg, 'r-', alpha=0.6, linewidth=2)
-            # self.ax12.legend(['speed', 'speed_avg'], loc=2)
-
-            # self.ax13.clear()
-            # self.ax13.margins(x=0.01)
-            # self.ax13.get_yaxis().set_ticks([])
-            #
-            # self.ax13.xaxis.set_ticks(np.arange(0, self.time_period, 500))
-            # self.ax13.plot(self.xaxis, self.best_ask_qty_history, 'b-', alpha=0.7, linewidth=2)
-            # self.ax13.plot(self.xaxis, self.best_bid_qty_history, 'r-', alpha=0.7, linewidth=2)
-            # self.ax13.legend(['ask qty', 'bid qty'], loc=2)
-
-            # self.ax14.clear()
-            # self.ax14.margins(x=0.01)
-            # self.ax14.get_yaxis().set_ticks([])
-            #
-            # self.ax14.xaxis.set_ticks(np.arange(0, self.time_period, 500))
-            # self.ax14.plot(self.xaxis, self.bid_ask_spread, 'y-', alpha=0.9, linewidth=2)
-            # self.ax14.plot(self.xaxis, self.bid_ask_spread_avg, 'g-', alpha=0.8, linewidth=2)
-            # self.ax14.legend(['b/a spread', 'b/a spread_avg'], loc=2)
-
             self.p[sid]['ax13'].clear()
             self.p[sid]['ax13'].margins(x=0)
             self.p[sid]['ax13'].xaxis.set_major_formatter(plt.NullFormatter())
@@ -355,11 +315,14 @@ class LOBMonitor:
             self.p[sid]['ax15'].get_yaxis().set_ticks([])
             self.p[sid]['ax15'].xaxis.set_ticks(np.arange(0, self.time_period, 500))
             self.p[sid]['ax15'].set_facecolor('#efefef')
-
-
-            # self.d[sid]['decision_history'][self.d[sid]['decision_history'] == 0] = np.nan
             self.p[sid]['ax15'].plot(self.xaxis_zoom, self.d[sid]['value_history'][self.zoom_part:], 'y-', linewidth=1)
-            # self.p[sid]['ax13'].bar(self.xaxis_zoom_1s, self.d[sid]['decision_history'][self.zoom_part:], width=0.8)
+
+            amount = self.d[sid]['riport0'].split("Deposit:", 1)
+            amount = int(amount[1][1:6])
+            bline = np.array([amount] * abs(self.zoom_part))
+            self.p[sid]['ax15'].plot(self.xaxis_zoom, bline, 'r--', linewidth=1, alpha=0.4)
+            # self.p[sid]['ax15'].fill_between(self.xaxis_zoom_1s, self.d[sid]['value_history'][self.zoom_part:], color="skyblue", alpha=0.4)
+
 
             # except:
             #     pass
