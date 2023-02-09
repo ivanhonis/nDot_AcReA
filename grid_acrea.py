@@ -1,4 +1,4 @@
-import sys
+# import sys
 import time
 import os
 # import pickle
@@ -34,8 +34,8 @@ np.set_printoptions(threshold=5000)
 class SocketActionLimit:
     # market sebeség mérő
 
-    def __init__(self, time_period, extra_time):
-        self.time_period = time_period
+    def __init__(self, period, extra_time):
+        self.time_period = period
         self.extra_time = extra_time
         # self.socket_action = typed.Dict.empty(*time_dict_type)
         self.socket_action = {}
@@ -157,9 +157,42 @@ class BinanceActionLimit:
 
 
 class TradeRegister:
-    def __init__(self):
+    def __init__(self, log):
+        self.log = log
         self.price_arr = np.array([], dtype=np.float32)
         self.qty_arr = np.array([], dtype=np.float32)
+
+        self.save_price_arr = self.price_arr.copy()
+
+    def save(self):
+        if np.sum(self.price_arr) != np.sum(self.save_price_arr) or self.price_arr.shape[0] != self.save_price_arr.shape[0]:
+            self.save_price_arr = self.price_arr.copy()
+
+            outfile_price = "grid_acrea_trade_register_price"
+            outfile_qty = "grid_acrea_trade_register_qty"
+            temp_price_arr = self.price_arr.copy()
+            temp_qty_arr = self.qty_arr.copy()
+            count = 0
+            # a párhuzamos folyamtok miatt ellenőrizni kell, hogy mind a kettőbe bekerült-e a bejegyzés
+            while temp_price_arr.shape[0] != temp_qty_arr.shape[0] and count < 100:
+                temp_price_arr = self.price_arr.copy()
+                temp_qty_arr = self.qty_arr.copy()
+                count += 1
+
+            if count < 100:
+                np.save(outfile_price, temp_price_arr)
+                np.save(outfile_qty, temp_qty_arr)
+
+    def load(self):
+        try:
+            self.price_arr = np.load('grid_acrea_trade_register_price.npy')
+            self.qty_arr = np.load('grid_acrea_trade_register_qty.npy')
+            self.log("Start position:")
+            self.log("price_arr:", str(self.price_arr))
+            self.log("qty_arr:", str(self.qty_arr))
+        except:
+            self.price_arr = np.array([], dtype=np.float32)
+            self.qty_arr = np.array([], dtype=np.float32)
 
     def add_trade(self, qty, price):
         self.price_arr = np.append(self.price_arr, np.array([float(price)]), axis=0)
@@ -196,6 +229,12 @@ class TradeRegister:
         v = np.sum(self.price_arr * self.qty_arr)
         return v
 
+    def get_avg_price(self):
+        if self.qty_arr.shape[0] > 0:
+            return np.sum(self.price_arr * self.qty_arr) / np.sum(self.qty_arr)
+        else:
+            return 0
+
     def get_max_price(self):
         return np.max(self.price_arr, initial=0.0)
 
@@ -207,8 +246,15 @@ class TradeRegister:
         return float(v)
 
 
-class Grid_AcReA:
+class GridAcReA:
     def __init__(self, param):
+        # TODO realised PNL per day
+        # TODO Silent investor
+        # TODO trade reg array to monitor
+        # TODO Super visor
+        # TODO speed reg egységnyi időre
+        # TODO COmission stop
+        # TODO megcsinálni a napon átmenő Binance regisztrálót
         self.name = param['name']
         self.stop_flag = param['stop_flag']
         self.back_length_detect = param['back_length_detect']
@@ -242,8 +288,9 @@ class Grid_AcReA:
         self.reg_trading_mode()
 
         self.time_period = param['time_period']
-        self.sal = SocketActionLimit(time_period=5000, extra_time=0)
-        self.tr = TradeRegister()
+        self.sal = SocketActionLimit(period=5000, extra_time=0)
+        self.tr = TradeRegister(self.log)
+        self.tr.load()
         self.max_socket_action = 0
         self.max_socket_action_dt = datetime.now()
 
@@ -265,7 +312,7 @@ class Grid_AcReA:
         self.symbol = param['base'] + param['quote']
         self.base = param['base']
         self.quote = param['quote']
-        self.max_invest_quote = float(param['max_invest_quote'])
+        self.max_invest_quote = int(param['max_invest_quote'])
         # self.free_invest_quote = self.max_invest_quote
 
         self.minimum_buy_qty_base = float(param['minimum_buy_qty_base'])
@@ -278,6 +325,9 @@ class Grid_AcReA:
         self.api_key = "sNtEg0vnKFm09xKf8v9VJWIYspFFouJN5vJO9bSgUSAU8eoAUa5OaMuJYLLsuswr"
         self.api_secret = "Hhu6MPTOdEKBjZyooPr1JxbgiLME3VFJdymqJrtytrMywKatP08Y5G1Sb9ZuJv4S"
         self.bx_client = Client(self.api_key, self.api_secret)
+
+        sp = self.bx_client.get_symbol_ticker(symbol=self.symbol)
+        self.start_price = float(sp['price'])
 
         self.async_client_detect = None
         self.bm_detect = None
@@ -306,6 +356,9 @@ class Grid_AcReA:
         # ez kell a buy és a stop hoz
         self.actual_bid_price = 0.0
         self.actual_ask_price = 0.0
+
+        self.last_bid = 0.0
+        self.last_ask = 0.0
         # self.actual_bid_qty = 0.0
         # self.actual_ask_qty = 0.0
 
@@ -350,12 +403,12 @@ class Grid_AcReA:
 
         if self.simulation:
             with open("./simulation.txt", "a") as f:
-                print("It is just a simulation!", file=f)
-            print("It is just a simulation!")
+                print("Satus: simulation", file=f)
+            self.log("Satus:", "simulation")
         else:
             with open("./real_trading.txt", "a") as f:
-                print("AcReA in REAL TRADING mode!", file=f)
-            print("AcReA in REAL TRADING mode!")
+                print("Status: REAL TRADING MODE!", file=f)
+            self.log("Status:", "REAL TRADING MODE!")
 
         # egyéb státusz elemk regisztrálása
         self.status['simulation'] = True if self.simulation else False
@@ -411,35 +464,40 @@ class Grid_AcReA:
         b = self.base
         q = self.quote
         simulation = 'Simulation  ' if self.simulation else ''
-        r_str = f"{simulation}{self.name}   Start: {self.server_start_dt}    Symbol: {self.symbol}    Deposit: {self.deposit_quote} {q}   Max_invest: {self.max_invest_quote} {q}" \
+        r_str = f"{simulation}{self.name}   Start: {self.server_start_dt.strftime('%m.%d %H:%M:%S')}    Symbol: {self.symbol}    " \
+                f"Deposit: {self.deposit_quote} {q}   Max_invest: {self.max_invest_quote} {q}" \
                 f"   Buy_qty:{self.minimum_buy_qty_base} {b}"
         return r_str
 
     def get_riport_profit_str(self):
-        b = self.base
+        # b = self.base
         q = self.quote
         act_value = self.get_actual_value()
-        real_pnl = round(act_value - self.max_invest_quote, 8)
-        real_yield = round(real_pnl / self.time_delta * (24 * 60 * 60 * 365) / self.deposit_quote, 4)
+        exit_pnl = round(act_value - self.max_invest_quote, 2)
+        exit_yield = round(exit_pnl / self.time_delta * (24 * 60 * 60 * 365) / self.deposit_quote * 100, 2)
         free_invest_quote = round(self.slot_position['free_invest_quote'], 4)
         realised_profit = round(self.status['profit'], 8)
-        r_str = f"P&L: {real_pnl} {q}  Yield (annual): {real_yield} %   Realised P&L: {realised_profit} {q}   Value: {act_value} {q}   Free_invest: {free_invest_quote} {q}"
+        realised_yield = round(realised_profit / self.time_delta * (24 * 60 * 60 * 365) / self.deposit_quote * 100, 2)
+        r_str = f"Exit P&L: {exit_pnl} {q} => {exit_yield} %   Realised P&L: {realised_profit} {q} => {realised_yield} %  " \
+                f"Value: {act_value} {q}   Free_invest: {free_invest_quote} {q}"
         return r_str
 
     def get_riport_position_str(self):
         b = self.base
         q = self.quote
         qty = round(self.slot_position['qty'], 8)
+        qty_quote = qty * self.actual_bid_price
         actual_profile = self.slot_position['actual_profile']
         lastp = round(self.slot_position['last_buy_price'], 8)
-        minp = round(self.tr.get_min_price(), 8)
-        maxp = round(self.tr.get_max_price(), 8)
-        r_str = f"Qty: {qty} {b}   last_p.: {lastp} {q}  min_p.: {minp} {q}   max_p.: {maxp} {q}   act._profile: {actual_profile}"
+        minp = round(self.tr.get_min_price(), 2)
+        maxp = round(self.tr.get_max_price(), 2)
+        avgp = round(self.tr.get_avg_price(), 2)
+        r_str = f"Qty: {qty} {b} => {qty_quote} {q}   last_p.: {lastp}  min_p.: {minp} max_p.: {maxp} avg_p.: {avgp}  profile: {actual_profile}"
         return r_str
 
     def get_riport_limit_str(self):
-        b = self.base
-        q = self.quote
+        # b = self.base
+        # q = self.quote
         t = datetime.now().time()
         sec = (t.hour * 60 + t.minute) * 60 + t.second
         blocked_actions = self.bal.get_blocked_actions()
@@ -455,10 +513,12 @@ class Grid_AcReA:
         b = self.base
         q = self.quote
         monitor_turnover = round(float(self.status['turnover']), 2)
-        monitor_max_qty = round(float(self.status['max_qty']), 6)
+        turnover_minute = round(monitor_turnover / self.time_delta * 60, 2)
+        monitor_max_qty = round(float(self.status['max_qty']), 2)
         monitor_max_qty_quote = round(float(self.status['max_qty'] * self.actual_bid_price), 6)
         monitor_min_value = round(float(self.status['max_drawdown']), 2)
-        r_str = f"Turn_over: {monitor_turnover} {q}   Max.qty: {monitor_max_qty} {b}   Max.qty: {monitor_max_qty_quote} {q}   Max.DD: {monitor_min_value} {q}"
+        r_str = f"Total turnover: {monitor_turnover} => {turnover_minute} (/min) {q}  " \
+                f"Max.qty: {monitor_max_qty} {b} => {monitor_max_qty_quote} {q}  Max.DD: {monitor_min_value} {q}"
         return r_str
 
     def get_riport_trade_time_str(self):
@@ -471,12 +531,33 @@ class Grid_AcReA:
         r_str = f"Min_trade_time: {min_tr} ms   Max_trade_time: {max_tr} ms    Avg_trade_time: {avg_tr} ms"
         return r_str
 
+    def get_riport_compare_str(self):
+        # b = self.base
+        q = self.quote
+        start_p = round(self.start_price, 2)
+        silent_profit = round((self.deposit_quote * (self.actual_bid_price / self.start_price)) - self.deposit_quote, 2)
+        silent_yield = round(silent_profit / self.time_delta * (24 * 60 * 60 * 365) / self.deposit_quote * 100, 2)
+        r_str = f"Start price: {start_p} {q} Sil. Exit P&L  {silent_profit} {q} => {silent_yield} % "
+        return r_str
+
     @staticmethod
     def fix_size(text, size=200):
         space = ' ' * 200
         text = text + space
         text = text[:size]
         return bytes(text, 'utf-8')
+
+    @staticmethod
+    def log(text1, text2="", text3=""):
+        text1 = ' ' * 60 + text1
+        text1 = text1[-20:]
+        print(f"{datetime.now()} => {text1} {text2} {text3}", flush=True)
+
+    def shutdown(self):
+        self.log("Acrea shutdown.")
+        self.trade_in_progres = False
+        self.stop_flag[0] = 0  # ezel megy át a másik processbe
+        self.threads_in_progress = False
 
     def data_transfer(self):
 
@@ -495,17 +576,23 @@ class Grid_AcReA:
 
             self.sh_riport0[:] = self.fix_size(self.get_riport_basic_str())[:]
             self.sh_riport1[:] = self.fix_size(self.get_riport_profit_str())[:]
-            self.sh_riport2[:] = self.fix_size(self.get_riport_position_str())[:]
-            self.sh_riport3[:] = self.fix_size(self.get_riport_limit_str())[:]
-            self.sh_riport4[:] = self.fix_size(self.get_riport_status_str())[:]
-            self.sh_riport5[:] = self.fix_size(self.get_riport_trade_time_str())[:]
+            self.sh_riport2[:] = self.fix_size(self.get_riport_compare_str())[:]
+            self.sh_riport3[:] = self.fix_size(self.get_riport_position_str())[:]
+            self.sh_riport4[:] = self.fix_size(self.get_riport_limit_str())[:]
+            self.sh_riport5[:] = self.fix_size(self.get_riport_status_str())[:]
+            self.sh_riport6[:] = self.fix_size(self.get_riport_trade_time_str())[:]
 
             # amennyiben az ár vétel vagy eladás nélkül emelkedik itt átállítódik
             self.set_profile()
+            self.tr.save()
+
+            if self.commission_alert > 0:
+                self.log("Comission detected.", str(self.commission_alert))
+                self.shutdown()
 
             if os.path.exists('./stop.txt'):
                 os.remove('./stop.txt')
-                self.trade_in_progres = False
+                self.shutdown()
             else:
                 time.sleep(3)
 
@@ -542,7 +629,6 @@ class Grid_AcReA:
 
     def max_ask(self):
         return np.max(self.best_ask_price_history)
-
 
     def order_buy(self, qty_base):
         # {'symbol': 'BTCBUSD',
@@ -631,10 +717,7 @@ class Grid_AcReA:
         return executed_qty, cummulative_quote_qty, traded_price
 
     def check_trade_right(self):
-        if self.slot_position['qty'] == 0 and not self.trade_in_progres:
-            print('AcReA shot down.')
-            self.stop_flag[0] = 0
-            self.threads_in_progress = False
+        if not self.trade_in_progres:
             return False
         else:
             return True
@@ -716,8 +799,11 @@ class Grid_AcReA:
             self.decision_history[-1] = self.decision_long
             self.reg_order()
 
-    def stop(self, message=""):
-        # if self.slot_position['income_price'] > self.actual_bid_price or message != "Time":
+    def stop(self):
+        # shut down hez kell
+        if not self.check_trade_right():
+            return
+
         fix_bid_price = self.actual_bid_price
         sell_qty, income_value = self.tr.get_qty(fix_bid_price, spread=0)
         if sell_qty > 0:
@@ -735,11 +821,8 @@ class Grid_AcReA:
             self.decision_history[-1] = self.decision_stop
             self.actual_buy_qty_base = self.start_buy_qty_base
             self.set_profile()
-            # self.set_profile(1, direct=True)
-            # self.set_slot_position_array()
             self.reg_order()
-            # self.m_flag = False
-            self.check_trade_right()
+            # self.check_trade_right()
 
     @staticmethod
     def get_socket_name(symbol, i_type):
@@ -796,7 +879,6 @@ class Grid_AcReA:
         self.async_client_detect = await AsyncClient.create()
         self.bm_detect = BinanceSocketManager(self.async_client_detect)
         self.ts_detect = self.bm_detect.multiplex_socket(i_socket_list)
-
         async with self.ts_detect as tscm:
             while self.threads_in_progress:
                 res = await tscm.recv()
@@ -823,28 +905,28 @@ class Grid_AcReA:
                 # ask_qty = float(res['data']['A'])
                 #
                 self.actual_bid_price = bid
-                # self.actual_bid_qty[symbol] = float(res['data']['B'])
 
-                asyncio.gather(self.add_best_ask_price_history(ask),
-                               self.add_best_bid_price_history(bid),
-                               self.add_decision_history())
+                if self.last_bid != bid or self.last_ask != ask:
+                    self.last_ask = ask
+                    self.last_bid = bid
 
-                asyncio.gather(self.add_bid_uniform_filter(),
-                               self.add_ask_uniform_filter())
+                    asyncio.gather(self.add_best_ask_price_history(ask),
+                                   self.add_best_bid_price_history(bid),
+                                   self.add_decision_history())
 
-                # if not self.sal.is_trade_allow(int(datetime.now().timestamp())):
-                #     continue
+                    asyncio.gather(self.add_bid_uniform_filter(),
+                                   self.add_ask_uniform_filter())
 
-                if self.uniform_ask_price_history[-2] < self.uniform_ask_price_history[-1] and self.sal.is_ready_to_start():
-                    # print('------------------------------------------------------')
-                    b_value, b_length = self.back_signal(self.uniform_ask_price_history[-3000:-1])
-                    # print('fel', datetime.now().second, b_value, b_length)
-                    # print(self.uniform_ask_price_history[-100:])
+                    # if not self.sal.is_trade_allow(int(datetime.now().timestamp())):
+                    #     continue
 
-                    if b_value > self.uniform_ask_price_history[-2] and b_length > self.back_length_detect \
-                            and self.max_ask() - self.min_max_ask(1, 4) > self.actual_ask_price:
-                        self.buy()
+                    if self.uniform_ask_price_history[-2] < self.uniform_ask_price_history[-1] and self.sal.is_ready_to_start():
+                        b_value, b_length = self.back_signal(self.uniform_ask_price_history[-3000:-1])
+                        if b_value > self.uniform_ask_price_history[-2] and b_length > self.back_length_detect \
+                                and self.max_ask() - self.min_max_ask(1, 4) > self.actual_ask_price:
+                            self.buy()
 
+        self.tr.save()
         await self.async_client_detect.close_connection()
 
     async def async_websocket_bookticker_stopper(self):
@@ -892,6 +974,7 @@ class Grid_AcReA:
                         self.stop()
 
         await self.async_client_stopper.close_connection()
+        self.tr.save()
 
 
 class Monitor:
@@ -931,6 +1014,12 @@ class Monitor:
         self.mpi = str(self.process) + "/" + str(self.cores) + " core ->"
         self.data_manager()
 
+    @staticmethod
+    def log(text1, text2="", text3=""):
+        text1 = ' ' * 60 + text1
+        text1 = text1[-20:]
+        print(f"{datetime.now()} => {text1} {text2} {text3}", flush=True)
+
     def data_transfer(self):
 
         self.transfer[0][:] = np.array(self.sh_best_bid_price_history[:])
@@ -966,7 +1055,7 @@ class Monitor:
             # self.print_data()
             self.data_transfer()
 
-        print('Monitor shutdown.')
+        self.log('Monitor shutdown.')
 
 
 # __main__
@@ -974,7 +1063,10 @@ if __name__ == '__main__':
     path = "./venv/"
     if os.path.exists(path):
         print('Local running?')
-        sys.exit()
+        # sys.exit()
+
+    grid_acrea = GridAcReA
+    acrea_monitor = Monitor
 
     cores = cpu_count()
     running_processes = []
@@ -1005,10 +1097,10 @@ if __name__ == '__main__':
     # 4 long2000/8000 Diff2
     # 3 long2000/8000 16  grid blocker
     # 2 long2000/8000 Diff
-    # 1 long2000/8000 16
+    # 1 long2000/8000 50
 
-    setting = "long2000/8000 16"
-    print(setting)
+    setting = "long2000/8000 2.25"
+    grid_acrea.log("Actual setting:", setting)
     params = {}
     trading_profile = {}
     if setting == "long2000/8000 2.25":
@@ -1055,7 +1147,7 @@ if __name__ == '__main__':
                   'round_block_ask': 1.25,
                   }
 
-    elif setting == "long2000/8000 16":
+    elif setting == "long2000/8000 50":
         # egy profil van csak kis egyszeri befektetési összeggel nagy totál összeggel
         # arra számítok, hogy folymatosn fog tudni működni
         trading_profile = {
@@ -1069,7 +1161,7 @@ if __name__ == '__main__':
                   'quote': "BUSD",
                   'deposit_quote': 2000,
                   'max_invest_quote': 8000,
-                  'minimum_buy_qty_base': 0.0016,
+                  'minimum_buy_qty_base': 0.0050,
                   'trade_profile_limits': [1.1],  # mindíg 1es profilon lesz
                   'back_length_detect': 25,
                   'back_length_stopper': 25,
@@ -1141,8 +1233,7 @@ if __name__ == '__main__':
     params['riport8'] = riport8
     params['riport9'] = riport9
 
-    n_acrea = Grid_AcReA
-    process1 = Process(target=n_acrea, args=(params,))
+    process1 = Process(target=grid_acrea, args=(params,))
     process1.start()
 
     params2 = {'cores': cores,
@@ -1171,8 +1262,7 @@ if __name__ == '__main__':
 
                }
 
-    n_monitor = Monitor
-    process2 = Process(target=n_monitor, args=(params2,))
+    process2 = Process(target=acrea_monitor, args=(params2,))
     process2.start()
 
     process1.join()
